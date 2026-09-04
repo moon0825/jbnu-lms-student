@@ -1,6 +1,6 @@
 # 문제 신고·기능 제안 수집 계약
 
-버전 0.6.0 · 2026-09-04
+버전 0.7.0 · 2026-09-04
 
 ## 동작 원칙
 
@@ -42,7 +42,7 @@ JBNU_LMS_FEEDBACK_TIMEOUT_MS=8000
   "stepsToReproduce": "연결 확인 후 공지 목록 조회",
   "expectedBehavior": "최신 공지 목록 표시",
   "technicalContext": {
-    "appVersion": "0.6.0",
+    "appVersion": "0.7.0",
     "platform": "win32",
     "arch": "x64",
     "nodeMajor": 22
