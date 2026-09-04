@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+# 로컬 인증 정보와 브라우저 프로필은 절대 커밋하지 않는다
+*.dpapi
+session*.json
+browser-profile/
+profile/
+downloads/
+.jbnu-lms-mcp/
+tests/live/output/

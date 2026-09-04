@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "jbnu-lms": {
+      "command": "node",
+      "args": ["C:\\Users\\<사용자>\\Documents\\jbnu-lms-mcp\\dist\\cli.js", "serve"],
+      "env": {
+        "JBNU_LMS_LOG_LEVEL": "warn",
+        "JBNU_LMS_LOGIN_MODE": "assisted",
+        "JBNU_LMS_AUTO_LOGIN_WAIT_SEC": "90",
+        "JBNU_LMS_KEEPALIVE_MIN": "20"
+      }
+    }
+  }
+}

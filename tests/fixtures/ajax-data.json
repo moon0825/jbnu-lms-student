@@ -1,0 +1,58 @@
+{
+  "core_course_get_enrolled_courses_by_timeline_classification": {
+    "courses": [
+      { "id": 101, "fullname": "테스트 강좌 A", "shortname": "TEST-A", "fullnamedisplay": "테스트 강좌 A", "viewurl": "http://localhost/course/view.php?id=101", "startdate": 1788220800, "enddate": 1798675200, "progress": 40, "hasprogress": true, "hidden": false, "coursecategory": "공과대학" },
+      { "id": 102, "fullname": "테스트 강좌 B", "shortname": "TEST-B", "fullnamedisplay": "테스트 강좌 B", "viewurl": "http://localhost/course/view.php?id=102", "startdate": 1788220800, "enddate": 1798675200, "progress": 10, "hasprogress": true, "hidden": false, "coursecategory": "공과대학" },
+      { "id": 99, "fullname": "지난 학기 강좌", "shortname": "OLD", "fullnamedisplay": "지난 학기 강좌", "viewurl": "http://localhost/course/view.php?id=99", "startdate": 1709251200, "enddate": 1719705600, "progress": 100, "hasprogress": true, "hidden": false, "coursecategory": "공과대학" }
+    ],
+    "nextoffset": 3
+  },
+  "core_calendar_get_action_events_by_timesort": {
+    "events": [
+      {
+        "id": 8001, "name": "과제 1: 보고서 마감", "description": "", "modulename": "assign", "activityname": "과제 1: 보고서", "instance": 601, "eventtype": "due",
+        "timestart": 1788620340, "timesort": 1788620340, "overdue": false,
+        "course": { "id": 101, "fullname": "테스트 강좌 A", "shortname": "TEST-A", "viewurl": "http://localhost/course/view.php?id=101" },
+        "action": { "name": "과제 제출", "url": "http://localhost/mod/assign/view.php?id=5001", "actionable": true, "itemcount": 1 },
+        "url": "http://localhost/mod/assign/view.php?id=5001", "formattedtime": "2026년 9월 5일 오후 11:59"
+      },
+      {
+        "id": 8002, "name": "퀴즈 1 마감", "description": "", "modulename": "quiz", "activityname": "퀴즈 1", "instance": 701, "eventtype": "close",
+        "timestart": 1788879600, "timesort": 1788879600, "overdue": false,
+        "course": { "id": 102, "fullname": "테스트 강좌 B", "shortname": "TEST-B", "viewurl": "http://localhost/course/view.php?id=102" },
+        "action": { "name": "퀴즈 응시", "url": "http://localhost/mod/quiz/view.php?id=5101", "actionable": true, "itemcount": 1 },
+        "url": "http://localhost/mod/quiz/view.php?id=5101", "formattedtime": "2026년 9월 8일 오후 11:00"
+      },
+      {
+        "id": 8003, "name": "과제 0: 지난 과제 마감", "description": "", "modulename": "assign", "activityname": "과제 0: 지난 과제", "instance": 600, "eventtype": "due",
+        "timestart": 1788188400, "timesort": 1788188400, "overdue": true,
+        "course": { "id": 101, "fullname": "테스트 강좌 A", "shortname": "TEST-A", "viewurl": "http://localhost/course/view.php?id=101" },
+        "action": { "name": "과제 제출", "url": "http://localhost/mod/assign/view.php?id=5000", "actionable": true, "itemcount": 1 },
+        "url": "http://localhost/mod/assign/view.php?id=5000", "formattedtime": "2026년 8월 31일 오후 11:59"
+      }
+    ]
+  },
+  "core_courseformat_get_state": {
+    "course": { "id": 101, "sectionlist": [7000, 7001, 7002] },
+    "section": [
+      { "id": 7000, "section": 0, "number": 0, "title": "강좌 개요", "visible": true, "cmlist": [3001] },
+      { "id": 7001, "section": 1, "number": 1, "title": "1주차 (9월 1일 - 9월 7일)", "visible": true, "cmlist": [4001, 4002] },
+      { "id": 7002, "section": 2, "number": 2, "title": "2주차 (9월 8일 - 9월 14일)", "visible": true, "cmlist": [4003, 5001, 4004] }
+    ],
+    "cm": [
+      { "id": 3001, "name": "공지사항", "visible": true, "uservisible": true, "sectionid": 7000, "sectionnumber": 0, "module": "ubboard", "url": "http://localhost/mod/ubboard/view.php?id=3001" },
+      { "id": 4001, "name": "1주차 강의자료", "visible": true, "uservisible": true, "sectionid": 7001, "sectionnumber": 1, "module": "resource", "url": "http://localhost/mod/resource/view.php?id=4001" },
+      { "id": 4002, "name": "1주차 동영상 강의", "visible": true, "uservisible": true, "sectionid": 7001, "sectionnumber": 1, "module": "vod", "url": "http://localhost/mod/vod/view.php?id=4002" },
+      { "id": 4003, "name": "2주차 실습 자료", "visible": true, "uservisible": true, "sectionid": 7002, "sectionnumber": 2, "module": "folder", "url": "http://localhost/mod/folder/view.php?id=4003" },
+      { "id": 5001, "name": "과제 1: 보고서", "visible": true, "uservisible": true, "sectionid": 7002, "sectionnumber": 2, "module": "assign", "url": "http://localhost/mod/assign/view.php?id=5001" },
+      { "id": 4004, "name": "참고 링크", "visible": true, "uservisible": false, "sectionid": 7002, "sectionnumber": 2, "module": "url", "url": "http://localhost/mod/url/view.php?id=4004", "hascmrestrictions": true }
+    ]
+  },
+  "core_course_get_updates_since": {
+    "instances": [
+      { "contextlevel": "module", "id": 4003, "updates": [ { "name": "configuration", "timeupdated": 1788436000 }, { "name": "fileareas", "timeupdated": 1788436000 } ] }
+    ],
+    "warnings": []
+  },
+  "core_user_get_users_by_field": [ { "id": 12345, "fullname": "홍길동" } ]
+}

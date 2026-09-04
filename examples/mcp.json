@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "jbnu-lms": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\Users\\<사용자>\\Documents\\jbnu-lms-mcp\\dist\\cli.js", "serve"],
+      "env": { "JBNU_LMS_LOG_LEVEL": "warn" }
+    }
+  }
+}
