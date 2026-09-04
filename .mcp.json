@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "jbnu_lms": {
+      "command": "node",
+      "args": [
+        "--disable-warning=ExperimentalWarning",
+        "--experimental-sqlite",
+        "dist/cli.js",
+        "serve"
+      ],
+      "env": {
+        "JBNU_LMS_LOG_LEVEL": "warn"
+      }
+    }
+  }
+}

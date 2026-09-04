@@ -2,10 +2,10 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const APP_NAME = 'jbnu-lms-mcp';
-export const APP_VERSION = '0.1.0';
+export const APP_VERSION = '0.7.0';
 export const DEFAULT_BASE_URL = 'https://lms.jbnu.ac.kr';
 export const TIMEZONE = 'Asia/Seoul';
-/** 전북대 LMS 통합인증(SSO) 진입 경로. 이 경로 이후는 sso.jbnu.ac.kr 로 이동하므로 자동화하지 않는다. */
+/** 진단용 전북대 LMS 통합인증 중계 경로. 로그인 시작점으로 직접 사용하지 않는다. */
 export const SSO_ENTRY_PATH = '/exsignon/sso/sso_index.php';
 
 export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug';
@@ -20,6 +20,8 @@ export interface AppConfig {
   downloadDir: string;
   /** 'chrome' | 'msedge' | 실행 파일 절대 경로 | '' (자동) */
   browserPreference: string;
+  /** 원문을 재로그인 없이 열 수 있도록 정리된 전용 브라우저 프로필을 유지 */
+  retainBrowserProfile: boolean;
   requestTimeoutMs: number;
   minRequestIntervalMs: number;
   maxConcurrentRequests: number;
@@ -29,6 +31,11 @@ export interface AppConfig {
   headlessVerify: boolean;
   /** 로그인 후 자동 확인 폴링 간격(ms) */
   loginPollIntervalMs: number;
+  /** 선택적 HTTPS 피드백 수집 webhook. 미설정 시 로컬에만 저장 */
+  feedbackEndpoint: string | null;
+  /** 피드백 webhook 인증 토큰. 응답·로그에 노출하지 않는다 */
+  feedbackToken: string | null;
+  feedbackTimeoutMs: number;
 }
 
 function stripTrailingSlash(url: string): string {
@@ -63,12 +70,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     stateDir: path.join(dataDir, 'state'),
     downloadDir: env.JBNU_LMS_DOWNLOAD_DIR || path.join(os.homedir(), 'Downloads', 'jbnu-lms'),
     browserPreference: env.JBNU_LMS_BROWSER || '',
+    retainBrowserProfile: env.JBNU_LMS_RETAIN_BROWSER_PROFILE !== '0',
     requestTimeoutMs: intEnv(env.JBNU_LMS_TIMEOUT_MS, 20_000),
     minRequestIntervalMs: intEnv(env.JBNU_LMS_MIN_INTERVAL_MS, 250),
     maxConcurrentRequests: intEnv(env.JBNU_LMS_MAX_CONCURRENCY, 3),
     maxRetries: intEnv(env.JBNU_LMS_MAX_RETRIES, 2),
     logLevel: ['silent', 'error', 'warn', 'info', 'debug'].includes(logLevel) ? logLevel : 'warn',
     headlessVerify: env.JBNU_LMS_HEADLESS_VERIFY !== '0',
-    loginPollIntervalMs: intEnv(env.JBNU_LMS_LOGIN_POLL_MS, 2_000),
+    loginPollIntervalMs: intEnv(env.JBNU_LMS_LOGIN_POLL_MS, 750),
+    feedbackEndpoint: env.JBNU_LMS_FEEDBACK_URL || null,
+    feedbackToken: env.JBNU_LMS_FEEDBACK_TOKEN || null,
+    feedbackTimeoutMs: intEnv(env.JBNU_LMS_FEEDBACK_TIMEOUT_MS, 8_000),
   };
 }

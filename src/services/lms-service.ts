@@ -3,10 +3,12 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash, randomBytes } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { MoodleAjaxAdapter, AjaxActionEvent } from '../adapters/moodle-ajax-adapter.js';
 import type { MoodleApiAdapter } from '../adapters/moodle-api-adapter.js';
 import type { JbnuSessionAdapter } from '../adapters/jbnu-session-adapter.js';
-import type { Announcement, Assignment, Course, CourseModule, CourseOverview, CourseSection, Deadline, DeadlineType, Material, MaterialKind, Note } from '../adapters/types.js';
+import type { Announcement, Assignment, Course, CourseModule, CourseOverview, CourseSection, DataSource, Deadline, DeadlineType, Material, MaterialKind, Note } from '../adapters/types.js';
 import type { SessionManager } from '../auth/session-manager.js';
 import type { AppConfig } from '../config.js';
 import { LmsError, toLmsError } from '../errors.js';
@@ -15,10 +17,12 @@ import { classifySubmissionText } from '../parsers/assign.js';
 import { fromIso, nowSeoul, toIso } from '../time.js';
 import { safeFileName } from '../text.js';
 import { analyzeAssignment, type AssignmentAnalysis } from './assignment-analysis.js';
+import { buildAttentionInbox, buildCalendarCandidates, type AttentionInbox, type CalendarCandidate } from './attention.js';
 import { buildDailyBriefing, buildWeeklyPlan, type DailyBriefing, type WeeklyPlan } from './briefing.js';
 import type { MemoryCache } from './cache.js';
 import { dedupeBy, normalizeKey } from './dedupe.js';
 import { applyToSnapshot, diffSnapshot, type ChangeSet, type SnapshotStore } from './snapshot.js';
+import { buildSubmissionCheck, type SubmissionCheck } from './submission-check.js';
 
 export interface LmsServiceDeps {
   config: AppConfig;
@@ -45,6 +49,29 @@ export interface CourseNotice {
   boardUrl: string | null;
 }
 
+export interface ActivityCompletion {
+  cmId: number;
+  name: string;
+  modName: string;
+  kind: MaterialKind;
+  url: string | null;
+  sectionTitle: string;
+  week: number | null;
+  complete: boolean;
+  completionState: number;
+}
+
+export interface ActivityCompletionReport {
+  courseId: number;
+  courseName: string;
+  courseUrl: string;
+  trackedTotal: number;
+  incompleteTotal: number;
+  activities: ActivityCompletion[];
+  source: DataSource;
+  notes: Note[];
+}
+
 const MATERIAL_KIND: Record<string, MaterialKind> = {
   resource: 'file',
   ubfile: 'file',
@@ -67,20 +94,52 @@ const MATERIAL_KIND: Record<string, MaterialKind> = {
 
 const NON_MATERIAL = new Set(['label', 'assign', 'quiz', 'forum', 'ubboard', 'attendance', 'ubattendance', 'chat', 'choice', 'feedback', 'survey', 'workshop', 'ubsurvey', 'zoom', 'bigbluebuttonbn', 'onlinetext']);
 
+function partialFailureNote(scope: string, action: string, cause: unknown): Note {
+  const err = toLmsError(cause);
+  const ux = err.toUserFacing({ operation: action });
+  const next = ux.recoveryAction ? ` 다음 행동: ${ux.recoveryAction.label}.` : '';
+  return {
+    level: 'warn',
+    text: `${scope}: ${action}에 실패했습니다 (${ux.title}).${next}`,
+    code: err.kind,
+    scope,
+    retryable: err.retryable,
+    recoveryAction: ux.recoveryAction,
+  };
+}
+
 export class LmsService {
   constructor(private readonly deps: LmsServiceDeps) {}
 
+  /**
+   * 무인/예약 실행 여부를 async 컨텍스트로 전파한다. background 이면 세션 만료 시
+   * 로그인 창을 열지 않고 AUTH_REQUIRED 를 던져 예약 작업이 조용히 건너뛰도록 한다.
+   * 중첩된 withAuth 호출도 같은 컨텍스트를 상속한다.
+   */
+  private readonly authCtx = new AsyncLocalStorage<{ background: boolean }>();
+
   get config(): AppConfig {
     return this.deps.config;
+  }
+
+  /** options.background 를 async 컨텍스트에 실어 fn 을 실행한다(중첩 상속). */
+  private runWithMode<T>(background: boolean | undefined, fn: () => Promise<T>): Promise<T> {
+    const bg = background ?? this.authCtx.getStore()?.background ?? false;
+    return this.authCtx.run({ background: bg }, fn);
+  }
+
+  private isBackground(): boolean {
+    return this.authCtx.getStore()?.background ?? false;
   }
 
   // ---------- 인증 래퍼 ----------
 
   async withAuth<T>(fn: () => Promise<T>): Promise<T> {
     const sm = this.deps.sessionManager;
+    const background = this.isBackground();
     await sm.load();
     if (!sm.credentials()) {
-      if (!this.deps.autoLogin) throw new LmsError('AUTH_REQUIRED');
+      if (!this.deps.autoLogin || background) throw new LmsError('AUTH_REQUIRED');
       await this.autoLogin();
     }
     try {
@@ -92,7 +151,7 @@ export class LmsService {
       if (err.kind === 'AUTH_EXPIRED' || err.kind === 'AUTH_REQUIRED') {
         sm.markExpired();
         this.deps.cache.clear();
-        if (!this.deps.autoLogin) throw err;
+        if (!this.deps.autoLogin || background) throw err;
         await this.autoLogin();
         const result = await fn();
         sm.markSync();
@@ -206,6 +265,7 @@ export class LmsService {
                     descriptionText: fromPage?.descriptionText ?? null,
                     files: fromPage?.files ?? [],
                     dates: fromPage?.dates ?? [],
+                    completionState: cm.completionstate ?? null,
                   };
                 }),
             }));
@@ -257,7 +317,7 @@ export class LmsService {
         } catch (e) {
           const err = toLmsError(e);
           if (err.kind === 'AUTH_EXPIRED' || err.kind === 'AUTH_REQUIRED') throw err;
-          notes.push({ level: 'warn', text: `${course.fullName}: 강좌 화면을 읽지 못했습니다 (${err.toUserFacing().title}).` });
+          notes.push(partialFailureNote(course.fullName, '강좌 화면 조회', err));
           continue;
         }
         if (!board.boardCmId) {
@@ -271,7 +331,7 @@ export class LmsService {
           } catch (e) {
             const err = toLmsError(e);
             if (err.kind === 'AUTH_EXPIRED' || err.kind === 'AUTH_REQUIRED') throw err;
-            notes.push({ level: 'warn', text: `${course.fullName}: 공지 목록을 읽지 못했습니다 (${err.toUserFacing().title}).` });
+            notes.push(partialFailureNote(course.fullName, '공지 목록 조회', err));
             break;
           }
           for (const item of list.items) {
@@ -412,7 +472,7 @@ export class LmsService {
         } catch (e) {
           const err = toLmsError(e);
           if (err.kind === 'AUTH_EXPIRED' || err.kind === 'AUTH_REQUIRED') throw err;
-          notes.push({ level: 'warn', text: `${course.fullName}: 과제 목록을 읽지 못했습니다 (${err.toUserFacing().title}).` });
+          notes.push(partialFailureNote(course.fullName, '과제 목록 조회', err));
         }
       }
       // 타임라인 이벤트로 미제출 여부 보강 (이벤트가 있으면 아직 제출하지 않은 과제)
@@ -485,9 +545,18 @@ export class LmsService {
     });
   }
 
+  async checkAssignmentSubmission(cmId: number): Promise<SubmissionCheck> {
+    const { assignment } = await this.getAssignmentDetail(cmId);
+    return buildSubmissionCheck(assignment);
+  }
+
   // ---------- 마감 ----------
 
-  async getUpcomingDeadlines(options: { days?: number; includeOverdue?: boolean; overdueDays?: number; includeSubmitted?: boolean; courseId?: number } = {}): Promise<{ deadlines: Deadline[]; notes: Note[] }> {
+  async getUpcomingDeadlines(options: { days?: number; includeOverdue?: boolean; overdueDays?: number; includeSubmitted?: boolean; courseId?: number; background?: boolean } = {}): Promise<{ deadlines: Deadline[]; notes: Note[] }> {
+    return this.runWithMode(options.background, () => this.getUpcomingDeadlinesInner(options));
+  }
+
+  private async getUpcomingDeadlinesInner(options: { days?: number; includeOverdue?: boolean; overdueDays?: number; includeSubmitted?: boolean; courseId?: number } = {}): Promise<{ deadlines: Deadline[]; notes: Note[] }> {
     return this.withAuth(async () => {
       const days = Math.min(Math.max(options.days ?? 7, 1), 120);
       const overdueDays = options.includeOverdue === false ? 0 : Math.min(options.overdueDays ?? 14, 90);
@@ -503,7 +572,9 @@ export class LmsService {
       } catch (e) {
         const err = toLmsError(e);
         if (err.kind === 'AUTH_EXPIRED' || err.kind === 'AUTH_REQUIRED') throw err;
-        notes.push({ level: 'warn', text: `캘린더 일정을 읽지 못해 과제 목록만으로 계산했습니다 (${err.toUserFacing().title}).` });
+        const note = partialFailureNote('전체 강좌', 'LMS 캘린더 조회', err);
+        note.text = `LMS 캘린더를 읽지 못해 과제 목록만으로 계산했습니다 (${err.toUserFacing().title}).${note.recoveryAction ? ` 다음 행동: ${note.recoveryAction.label}.` : ''}`;
+        notes.push(note);
       }
       const { assignments, notes: an } = await this.getAssignments({ courseId: options.courseId });
       notes.push(...an);
@@ -577,12 +648,81 @@ export class LmsService {
     });
   }
 
-  async downloadMaterial(options: { cmId?: number; fileUrl?: string; courseId?: number; targetDir?: string; maxBytes?: number }): Promise<{ path: string; bytes: number; contentType: string | null; sourceUrl: string; fileName: string; courseName: string | null; note?: string }> {
+  /**
+   * 강좌의 이수(완료) 추적 활동을 조회한다. 미시청 온라인 강의·미완료 활동을 찾는 데 쓴다.
+   * LMS 가 완료 추적을 켠 활동만 대상이며(completionState !== null), null 은 '추적 안 함'으로 분류해
+   * 미완료로 오인하지 않는다. 추가 네트워크 없이 getCourseOverview 결과만 사용한다(조회 전용).
+   */
+  async getActivityCompletion(options: { courseId: number; onlyIncomplete?: boolean }): Promise<ActivityCompletionReport> {
+    return this.withAuth(async () => {
+      const ov = await this.getCourseOverview(options.courseId);
+      const notes: Note[] = [];
+      const activities: ActivityCompletion[] = [];
+      let trackedTotal = 0;
+      for (const s of ov.sections) {
+        const weekMatch = s.title.match(/(\d+)\s*주\s*차?/);
+        const week = weekMatch ? Number(weekMatch[1]) : s.number ?? null;
+        for (const m of s.modules) {
+          if (m.completionState == null) continue; // 완료 추적이 설정되지 않은 활동은 제외
+          trackedTotal += 1;
+          const complete = m.completionState !== 0; // 1/2/3 = 완료 계열, 0 = 미완료
+          activities.push({
+            cmId: m.cmId,
+            name: m.name,
+            modName: m.modName,
+            kind: MATERIAL_KIND[m.modName] ?? 'other',
+            url: m.url,
+            sectionTitle: s.title,
+            week,
+            complete,
+            completionState: m.completionState,
+          });
+        }
+      }
+      const incomplete = activities.filter((a) => !a.complete);
+      if (trackedTotal === 0) {
+        notes.push({ level: 'info', text: '이 강좌에는 완료(이수) 추적이 설정된 활동이 없어 미이수 여부를 판단할 수 없습니다. 출석·시청 여부는 원문에서 확인하세요.' });
+      }
+      const list = options.onlyIncomplete === false ? activities : incomplete;
+      return {
+        courseId: options.courseId,
+        courseName: ov.course.fullName,
+        courseUrl: ov.course.url,
+        trackedTotal,
+        incompleteTotal: incomplete.length,
+        activities: list,
+        source: ov.source,
+        notes,
+      };
+    });
+  }
+
+  /** 사용자가 준 file_url 이 LMS 의 파일 전송 경로(pluginfile 계열)인지 확인한다. 아니면 거부. */
+  private assertPluginfileUrl(raw: string): void {
+    let url: URL;
+    try {
+      url = new URL(raw, `${this.config.baseUrl}/`);
+    } catch {
+      throw new LmsError('INVALID_INPUT', 'file_url 형식이 올바르지 않습니다', { retryable: false });
+    }
+    const base = new URL(this.config.baseUrl);
+    if (url.host !== this.config.lmsHost || url.protocol !== base.protocol) {
+      throw new LmsError('UNSUPPORTED', `file_url 은 ${base.protocol}//${this.config.lmsHost} 의 파일만 허용합니다`, { retryable: false });
+    }
+    if (!/(^|\/)(pluginfile|webservice\/pluginfile|tokenpluginfile|draftfile)\.php\//.test(url.pathname)) {
+      throw new LmsError('UNSUPPORTED', 'file_url 은 LMS 첨부파일(pluginfile) 경로만 허용합니다. 강좌 자료는 cm_id 로 내려받아 주세요.', { retryable: false });
+    }
+  }
+
+  async downloadMaterial(options: { cmId?: number; fileUrl?: string; courseId?: number; targetDir?: string; maxBytes?: number }): Promise<{ path: string; bytes: number; contentType: string | null; sourceUrl: string; fileName: string; courseName: string | null; sha256: string; reusedExisting: boolean; note?: string }> {
     return this.withAuth(async () => {
       const maxBytes = options.maxBytes ?? 200 * 1024 * 1024;
       let courseName: string | null = null;
       let file;
       if (options.fileUrl) {
+        // file_url 은 LMS 의 파일 전송 경로(pluginfile)만 허용한다. 임의 인증 GET 이나
+        // 프롬프트 주입으로 심어진 링크로 다른 페이지를 내려받지 않도록 막는다.
+        this.assertPluginfileUrl(options.fileUrl);
         file = await this.deps.session.downloadFile(options.fileUrl);
       } else if (options.cmId) {
         let modName: string | null = null;
@@ -616,18 +756,51 @@ export class LmsService {
       } else {
         throw new LmsError('INVALID_INPUT', 'cm_id 또는 file_url 이 필요합니다');
       }
-      if (file.buffer.length > maxBytes) throw new LmsError('INVALID_INPUT', `파일이 너무 큽니다 (${Math.round(file.buffer.length / 1024 / 1024)}MB)`);
-      const dir = options.targetDir ?? path.join(this.config.downloadDir, courseName ? safeFileName(courseName) : options.courseId ? `course-${options.courseId}` : 'files');
+      if (file.buffer.length > maxBytes) {
+        throw new LmsError(
+          'DOWNLOAD_TOO_LARGE',
+          `파일 크기 ${Math.round(file.buffer.length / 1024 / 1024)}MB · 허용 한도 ${Math.round(maxBytes / 1024 / 1024)}MB`,
+          { retryable: false },
+        );
+      }
+      // target_dir 은 반드시 다운로드 폴더(config.downloadDir) 하위로 제한한다.
+      // 그렇지 않으면 프롬프트 주입 등으로 시작프로그램 폴더 같은 임의 위치에 파일을 떨어뜨릴 수 있다.
+      const downloadRoot = path.resolve(this.config.downloadDir);
+      let dir: string;
+      if (options.targetDir) {
+        const resolved = path.resolve(downloadRoot, options.targetDir);
+        const rel = path.relative(downloadRoot, resolved);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
+          throw new LmsError('INVALID_INPUT', `target_dir 은 다운로드 폴더(${downloadRoot}) 안이어야 합니다`, { retryable: false });
+        }
+        dir = resolved;
+      } else {
+        dir = path.join(downloadRoot, courseName ? safeFileName(courseName) : options.courseId ? `course-${options.courseId}` : 'files');
+      }
       await fs.mkdir(dir, { recursive: true });
-      let target = path.join(dir, file.fileName);
+      const downloadedName = safeFileName(file.fileName) || 'download';
+      let target = path.join(dir, downloadedName);
+      const sha256 = createHash('sha256').update(file.buffer).digest('hex');
       let n = 1;
       while (await fs.stat(target).then(() => true).catch(() => false)) {
-        const ext = path.extname(file.fileName);
-        target = path.join(dir, `${path.basename(file.fileName, ext)} (${n})${ext}`);
+        const existing = await fs.readFile(target).catch(() => null);
+        if (existing && existing.length === file.buffer.length && createHash('sha256').update(existing).digest('hex') === sha256) {
+          return { path: target, bytes: file.buffer.length, contentType: file.contentType, sourceUrl: file.url, fileName: path.basename(target), courseName, sha256, reusedExisting: true, note: '동일한 파일이 이미 있어 새 복사본을 만들지 않았습니다.' };
+        }
+        const ext = path.extname(downloadedName);
+        target = path.join(dir, `${path.basename(downloadedName, ext)} (${n})${ext}`);
         n += 1;
       }
-      await fs.writeFile(target, file.buffer);
-      return { path: target, bytes: file.buffer.length, contentType: file.contentType, sourceUrl: file.url, fileName: path.basename(target), courseName };
+      // 완료 파일처럼 보이는 부분 파일을 남기지 않도록 같은 폴더에 쓴 뒤 원자적으로 이름을 바꾼다.
+      const temporary = path.join(dir, `.${path.basename(target)}.${process.pid}-${randomBytes(3).toString('hex')}.partial`);
+      try {
+        await fs.writeFile(temporary, file.buffer, { flag: 'wx' });
+        await fs.rename(temporary, target);
+      } catch (e) {
+        await fs.rm(temporary, { force: true }).catch(() => undefined);
+        throw e;
+      }
+      return { path: target, bytes: file.buffer.length, contentType: file.contentType, sourceUrl: file.url, fileName: path.basename(target), courseName, sha256, reusedExisting: false };
     });
   }
 
@@ -644,14 +817,14 @@ export class LmsService {
       } catch (e) {
         const err = toLmsError(e);
         if (err.kind === 'AUTH_EXPIRED' || err.kind === 'AUTH_REQUIRED') throw err;
-        notes.push({ level: 'warn', text: `${c.fullName}: 자료 목록을 읽지 못했습니다.` });
+        notes.push(partialFailureNote(c.fullName, '수업자료 목록 조회', err));
       }
     }
     return { announcements, assignments, materials, courseIds: courses.map((c) => c.id), notes: [...notes, ...n2] };
   }
 
-  async getRecentChanges(options: { since?: string; courseId?: number; updateSnapshot?: boolean } = {}): Promise<{ changes: ChangeSet; moduleUpdates: Array<{ courseId: number; courseName: string | null; cmId: number; name: string; updates: string[]; url: string | null }>; notes: Note[]; snapshotSavedAt: string | null }> {
-    return this.withAuth(async () => {
+  async getRecentChanges(options: { since?: string; courseId?: number; updateSnapshot?: boolean; background?: boolean } = {}): Promise<{ changes: ChangeSet; moduleUpdates: Array<{ courseId: number; courseName: string | null; cmId: number; name: string; updates: string[]; url: string | null }>; notes: Note[]; snapshotSavedAt: string | null }> {
+    return this.runWithMode(options.background, () => this.withAuth(async () => {
       const prev = await this.deps.snapshots.load();
       const current = await this.collectForSnapshot(options.courseId);
       const changes = diffSnapshot(prev, current);
@@ -690,13 +863,37 @@ export class LmsService {
         snapshotSavedAt = new Date().toISOString();
       }
       return { changes, moduleUpdates, notes: current.notes, snapshotSavedAt };
+    }));
+  }
+
+  async getAttentionInbox(options: { days?: number; courseId?: number; updateSnapshot?: boolean; background?: boolean } = {}): Promise<{ inbox: AttentionInbox; notes: Note[]; snapshotSavedAt: string | null }> {
+    return this.runWithMode(options.background, async () => {
+      const recent = await this.getRecentChanges({ courseId: options.courseId, updateSnapshot: options.updateSnapshot });
+      const upcoming = await this.getUpcomingDeadlines({ days: options.days ?? 14, overdueDays: 14, courseId: options.courseId });
+      const notes = [...recent.notes, ...upcoming.notes];
+      return {
+        inbox: buildAttentionInbox({ deadlines: upcoming.deadlines, changes: recent.changes, moduleUpdates: recent.moduleUpdates }),
+        notes,
+        snapshotSavedAt: recent.snapshotSavedAt,
+      };
     });
+  }
+
+  async getCalendarSyncCandidates(options: { days?: number; courseId?: number; includeOverdue?: boolean } = {}): Promise<{ candidates: CalendarCandidate[]; notes: Note[] }> {
+    const result = await this.getUpcomingDeadlines({
+      days: options.days ?? 30,
+      overdueDays: options.includeOverdue ? 14 : 0,
+      includeOverdue: options.includeOverdue,
+      includeSubmitted: false,
+      courseId: options.courseId,
+    });
+    return { candidates: buildCalendarCandidates(result.deadlines), notes: result.notes };
   }
 
   // ---------- 브리핑 ----------
 
-  async getDailyBriefing(options: { days?: number } = {}): Promise<DailyBriefing & { notes: Note[] }> {
-    return this.withAuth(async () => {
+  async getDailyBriefing(options: { days?: number; background?: boolean } = {}): Promise<DailyBriefing & { notes: Note[] }> {
+    return this.runWithMode(options.background, () => this.withAuth(async () => {
       const { deadlines, notes } = await this.getUpcomingDeadlines({ days: options.days ?? 7, overdueDays: 14 });
       const { announcements, notes: n2 } = await this.getAnnouncements({ limit: 60 });
       const prev = await this.deps.snapshots.load();
@@ -710,14 +907,14 @@ export class LmsService {
       }
       const briefing = buildDailyBriefing({ deadlines, announcements: fresh, changes });
       return { ...briefing, notes: [...notes, ...n2] };
-    });
+    }));
   }
 
-  async getWeeklyStudyPlan(): Promise<WeeklyPlan & { notes: Note[] }> {
-    return this.withAuth(async () => {
+  async getWeeklyStudyPlan(options: { background?: boolean } = {}): Promise<WeeklyPlan & { notes: Note[] }> {
+    return this.runWithMode(options.background, () => this.withAuth(async () => {
       const { deadlines, notes } = await this.getUpcomingDeadlines({ days: 14, overdueDays: 7, includeSubmitted: true });
       const plan = buildWeeklyPlan({ deadlines: deadlines.filter((d) => d.submissionState !== 'submitted') });
       return { ...plan, notes };
-    });
+    }));
   }
 }

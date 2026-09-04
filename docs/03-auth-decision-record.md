@@ -39,7 +39,8 @@ Moodle 소스(MOODLE_405_STABLE)로 확인한 근거:
 ## 4. 결정
 
 1. **인증은 사용자가 직접**: 도구는 로그인용 브라우저 창만 열고, 통합인증·패스키·2차 인증은 사용자가 완료한다. 자격 증명은 읽지도 저장하지도 않는다.
-2. **세션 재사용**: 로그인이 끝난 전용 브라우저 프로필에서 LMS 호스트의 쿠키(`MoodleSession*`)와 `sesskey` 만 추출해 DPAPI 로 암호화 저장한다. 이후 조회는 브라우저 없이 HTTP 로 수행한다.
+   로그인 시작점은 SSO 중계 URL이 아니라 `https://lms.jbnu.ac.kr/my/`이며, Moodle의 로그인 페이지가 만든 공식 리다이렉트 체인만 따른다.
+2. **세션 재사용**: 로그인이 끝난 전용 브라우저 프로필에서 LMS 호스트의 쿠키(`MoodleSession*`)와 `sesskey` 만 추출해 DPAPI 로 암호화 저장한다. 성공하면 LMS 이외 쿠키와 자격 증명·방문 기록·사이트 저장소·캐시를 제거하고, Chrome이 사용자 계정으로 암호화한 LMS 쿠키만 원문 보기용으로 유지한다. 이후 일반 조회는 브라우저 없이 HTTP 로 수행한다.
 3. **데이터 경로 우선순위**: 공식 REST 토큰(있을 때만) → Moodle AJAX API → LMS 화면 해석. 각 응답에 출처를 표시한다.
 4. **전북대 전용 항목**: `mod_ubboard` 공지는 공식 API 가 없으므로 전용 화면 어댑터(`parsers/ubboard.ts`)로 구현한다.
 5. **토큰 기회 확보**: 로그인 검증 시 `user/managetoken.php` 에 기존 모바일 토큰이 있으면 검증 후 사용하고, `launch.php` 도 한 번 시도한다(실패가 정상). 학교 정책이 바뀌면 코드 수정 없이 공식 API 경로가 살아난다.
@@ -48,19 +49,27 @@ Moodle 소스(MOODLE_405_STABLE)로 확인한 근거:
 
 | 방식 | 동작 | 장점 | 위험 |
 |---|---|---|---|
-| assisted (기본) | Playwright 가 전용 프로필로 실제 Chrome/Edge 창을 띄우고, 사용자가 SSO 를 끝내 LMS 홈이 뜨면 자동 감지 후 창을 닫음 | 창을 닫을 필요 없음, 즉시 연결 | 학교 SSO 가 자동화 브라우저를 탐지하면 실패 → 자동으로 plain 으로 전환 |
-| plain | 자동화가 전혀 없는 일반 브라우저를 띄움. 사용자가 로그인 후 창을 닫으면 같은 프로필을 headless 로 열어 세션만 검증 | SSO 탐지 위험 없음 | 창을 닫아야 완료 |
+| plain (**기본**) | 자동화가 전혀 없는 일반 브라우저를 띄움. 창 제목과 전용 프로필의 최신 host/path 메타데이터가 일치하면 앱이 시작한 PID 트리만 세션 보존 종료하고 쿠키를 Windows DPAPI로 복호화·검증한 뒤 최소 원문 보기 프로필로 정리 | SSO 탐지 위험 없음, 원문 재로그인 감소 | Windows 창 제목과 Chrome History 스키마에 의존; LMS 쿠키가 로컬에 유지됨 |
+| assisted (실험적) | Playwright 가 전용 프로필로 Chrome/Edge 창을 띄우고 완료를 감지 | 창을 닫을 필요 없음 | 학교 SSO가 개발자도구로 감지하므로 기본값으로 사용하지 않음 |
 
-assisted 모드는 SSO 화면의 내용을 읽거나 조작하지 않는다. 현재 탭의 URL 호스트만 확인하고, LMS 호스트로 돌아온 뒤에만 `M.cfg.userId` 를 읽는다. `--disable-blink-features=AutomationControlled` 는 창을 일반 브라우저처럼 보이게 할 뿐 인증 절차를 우회하지 않는다.
+plain 모드가 배포 기본값이다. Chrome의 `Local State`에 있는 현재 Windows 사용자 DPAPI 키로 전용 프로필의
+`MoodleSession*`만 메모리에서 복호화하고 `/my/`를 HTTP로 확인한 뒤, 최소 세션 정보를 다시 DPAPI 파일로 저장한다.
+브라우저 프로필이 앱 바운드 암호화 등 지원하지 않는 방식이면 자동화로 우회하지 않고 오류를 반환한다.
+패스키 인증 팝업은 `--disable-popup-blocking`으로 이 전용 프로필에서만 허용한다. 검증 후에는 LMS 쿠키를 제외한 SSO 흔적과 브라우저 사용 기록을 정리한다.
+학교 SSO가 패스키 완료 뒤 원래 LMS 요청 대신 포털 홈으로 복귀시키는 경우에는 동일 전용 프로필로 LMS `/my/`를 다시 열어
+기존 SSO 세션을 이어 간다. `홈 | JBNU LXP`처럼 공개 홈과 구분이 어려운 화면도 `/my/`로 재확인한 뒤에만 완료로 판정한다.
+
+assisted 모드는 SSO 화면의 내용을 읽거나 조작하지 않지만 Playwright의 원격 디버깅 연결 자체가 탐지될 수 있어
+명시적으로 설정한 경우에만 사용한다.
 
 ## 6. 편의 기능과 그 대가
 
-- **자동 로그인 창**: 세션 만료를 감지하면 도구가 로그인 창을 스스로 띄우고 최대 90초(`JBNU_LMS_AUTO_LOGIN_WAIT_SEC`) 기다린 뒤 같은 요청을 이어서 처리한다.
+- **자동 로그인 창**: 세션 만료를 감지하면 도구가 일반 로그인 창을 띄우고 최대 120초(`JBNU_LMS_AUTO_LOGIN_WAIT_SEC`) 기다린 뒤 같은 요청을 이어서 처리한다.
 - **keep-alive**: MCP 서버가 켜져 있는 동안 20분마다 `/my/` 를 읽어 세션을 연장한다(`JBNU_LMS_KEEPALIVE=0` 으로 끔). 세션이 더 오래 유지되므로 PC 를 잠그지 않은 채 자리를 비우면 위험이 커진다.
-- **브라우저 프로필 유지**: `disconnect_lms` 는 기본적으로 브라우저 프로필(SSO 쿠키 포함)을 남겨 다음 로그인을 빠르게 한다. 완전 삭제는 `delete_browser_profile=true`.
+- **전용 브라우저 프로필**: 로그인 성공 뒤 LMS 쿠키만 남겨 `open_lms_source`에 재사용한다. 비밀번호·자동완성·방문 기록·SSO 쿠키·사이트 저장소·캐시는 제거하며 `JBNU_LMS_RETAIN_BROWSER_PROFILE=0`으로 즉시 폐기 방식도 선택할 수 있다. `disconnect_lms(delete_browser_profile=true)`로 전체 삭제한다.
 
 ## 7. 재검토 조건
 
 - 학교가 `typeoflogin` 을 브라우저 방식으로 바꾸거나 `token.php` 를 열면 → 공식 토큰 경로가 자동 활성화되므로 README 의 "인증 방식" 절만 갱신.
 - Coursemos 가 화면 구조를 바꾸면 → `parsers/` 와 `tests/fixtures/` 갱신.
-- SSO 가 assisted 창을 차단하면 → 기본 모드를 plain 으로 전환(`JBNU_LMS_LOGIN_MODE=plain`).
+- SSO 정책 또는 Chrome 쿠키 암호화 형식이 바뀌면 → plain 쿠키 검증을 재검토하고, 자동화 우회 없이 학교 공식 인증 경로만 사용.

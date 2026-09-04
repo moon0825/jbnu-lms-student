@@ -2,7 +2,7 @@
 .SYNOPSIS
   jbnu-lms-mcp 를 설치하고 MCP 클라이언트에 등록한다.
 .DESCRIPTION
-  1) Node.js 20+ 확인  2) npm ci  3) 빌드  4) 테스트(옵션)  5) 환경 점검  6) Claude Desktop / Codex 등록(옵션)
+  1) Node.js 22+ 확인  2) npm ci  3) 빌드  4) 테스트(옵션)  5) 환경 점검  6) Claude Desktop / Codex 등록(옵션)
 .EXAMPLE
   .\scripts\install.ps1 -RegisterClaude
   .\scripts\install.ps1 -RegisterClaude -RegisterCodex -SkipTests
@@ -19,9 +19,9 @@ Set-Location $root
 
 Write-Host "== jbnu-lms-mcp 설치 ==" -ForegroundColor Cyan
 $node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) { throw "Node.js 가 없습니다. https://nodejs.org 에서 LTS(20 이상)를 설치한 뒤 다시 실행하세요." }
+if (-not $node) { throw "Node.js 가 없습니다. https://nodejs.org 에서 Node.js 22 이상을 설치한 뒤 다시 실행하세요." }
 $ver = (node --version).TrimStart('v').Split('.')[0]
-if ([int]$ver -lt 20) { throw "Node.js 20 이상이 필요합니다. 현재: $(node --version)" }
+if ([int]$ver -lt 22) { throw "Node.js 22 이상이 필요합니다. 현재: $(node --version)" }
 
 Write-Host "[1/5] 의존성 설치" -ForegroundColor Yellow
 if (Test-Path package-lock.json) { npm ci --no-audit --no-fund } else { npm install --no-audit --no-fund }

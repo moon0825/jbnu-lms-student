@@ -14,9 +14,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findBrowser } from './auth/browser-login.js';
 import { APP_NAME, APP_VERSION } from './config.js';
-import { formatUserError } from './errors.js';
+import { formatUserError, toLmsError } from './errors.js';
 import { buildRuntime, serveStdio } from './server.js';
 import { fmtStatus } from './tools/format.js';
+import { fromIso, nowSeoul, relativeKo } from './time.js';
 
 function flag(name: string): boolean {
   return process.argv.includes(name);
@@ -40,25 +41,56 @@ function distEntry(): string {
 
 function configSnippets(): { claude: Record<string, unknown>; codex: string; json: Record<string, unknown> } {
   const entry = distEntry();
-  const serverDef = { command: 'node', args: [entry, 'serve'], env: { JBNU_LMS_LOG_LEVEL: 'warn' } };
+  // --experimental-sqlite: 로그인 후 브라우저 프로필 쿠키를 읽어 세션을 복구하는 데 필요 (Node 22).
+  const nodeArgs = ['--disable-warning=ExperimentalWarning', '--experimental-sqlite', entry, 'serve'];
+  const serverDef = { command: 'node', args: nodeArgs, env: { JBNU_LMS_LOG_LEVEL: 'warn' } };
   const claude = { mcpServers: { 'jbnu-lms': serverDef } };
-  const codex = ['[mcp_servers.jbnu-lms]', 'command = "node"', `args = [${JSON.stringify(entry)}, "serve"]`, '', '[mcp_servers.jbnu-lms.env]', 'JBNU_LMS_LOG_LEVEL = "warn"'].join('\n');
+  const codex = ['[mcp_servers.jbnu-lms]', 'command = "node"', `args = ["--disable-warning=ExperimentalWarning", "--experimental-sqlite", ${JSON.stringify(entry)}, "serve"]`, '', '[mcp_servers.jbnu-lms.env]', 'JBNU_LMS_LOG_LEVEL = "warn"'].join('\n');
   return { claude, codex, json: claude };
+}
+
+/** node:sqlite(쿠키 복구용)가 없으면 --experimental-sqlite 를 붙여 한 번만 재실행한다. */
+async function ensureSqlite(): Promise<void> {
+  if (process.env.__JBNU_REEXEC === '1') return;
+  if (process.execArgv.includes('--experimental-sqlite')) return;
+  const { spawnSync } = await import('node:child_process');
+  const here = fileURLToPath(import.meta.url);
+  const r = spawnSync(process.execPath, ['--disable-warning=ExperimentalWarning', '--experimental-sqlite', here, ...process.argv.slice(2)], {
+    stdio: 'inherit',
+    env: { ...process.env, __JBNU_REEXEC: '1' },
+  });
+  process.exit(r.status ?? 0);
 }
 
 async function cmdLogin(): Promise<number> {
   const rt = buildRuntime();
   const mode = flag('--plain') ? 'plain' : flag('--assisted') ? 'assisted' : rt.loginMode;
   const waitSec = Number.parseInt(opt('--wait') ?? '', 10) || 300;
-  out(`전북대 LMS 로그인용 브라우저를 엽니다 (${mode === 'assisted' ? '완료 자동 감지' : '창을 닫으면 완료'} 방식).`);
-  out('열린 창에서 통합인증(패스키 또는 2차 인증)을 직접 완료해 주세요. 이 프로그램은 어떤 인증 정보도 읽지 않습니다.');
+  out(`전북대 LMS 로그인용 브라우저를 엽니다 (${mode === 'assisted' ? '완료 자동 감지' : '일반 브라우저'} 방식).`);
+  if (mode === 'plain') out('로그인이 끝나 LMS 홈이 보이면 창을 닫지 말고 잠시 기다려 주세요. 세션을 보존해 저장한 뒤 전용 창이 자동으로 닫힙니다.');
+  out('중요: 통합로그인의 세 번째 "아이디 로그인" 탭을 선택해 아이디·비밀번호로 1차 인증하세요.');
+  out('그 다음 2차 인증 화면에서 "패스키"를 선택해 완료하세요. 두 번째 "패스키 인증 로그인" 탭을 누르는 경로와는 다릅니다.');
+  out('실제 LMS 홈 또는 강좌 화면이 뜨면 그대로 두세요. 연결 저장 뒤 전용 창이 자동으로 닫힙니다. 이 프로그램은 입력한 인증 정보를 읽거나 저장하지 않습니다.');
   try {
     const st = await rt.sessionManager.loginFlow(mode, waitSec * 1000);
     out();
     out(fmtStatus(st));
     return st.connected ? 0 : 2;
   } catch (e) {
-    out(formatUserError(e));
+    out(formatUserError(e, { operation: 'LMS 로그인' }));
+    return 1;
+  }
+}
+
+/** 이미 로그인된 전용 프로필에서 세션만 검증·저장한다 (브라우저를 새로 열지 않음). */
+async function cmdVerify(): Promise<number> {
+  const rt = buildRuntime();
+  try {
+    const st = await rt.sessionManager.completeLogin();
+    out(fmtStatus(st));
+    return st.connected ? 0 : 2;
+  } catch (e) {
+    out(formatUserError(e, { operation: '로그인 세션 저장' }));
     return 1;
   }
 }
@@ -70,7 +102,72 @@ async function cmdStatus(): Promise<number> {
     out(fmtStatus(st));
     return st.connected ? 0 : 2;
   } catch (e) {
-    out(formatUserError(e));
+    out(formatUserError(e, { operation: 'LMS 연결 상태 확인' }));
+    return 1;
+  }
+}
+
+/**
+ * 예약 실행용 브리핑. 세션이 만료돼도 로그인 창을 열지 않는다(background 모드).
+ * Windows 작업 스케줄러 등에서 매일 아침 실행해 오늘 마감·새 공지를 요약한다.
+ *   jbnu-lms-mcp brief [--weekly] [--days N] [--json] [--quiet-if-empty] [--out FILE]
+ */
+async function cmdBrief(): Promise<number> {
+  const rt = buildRuntime();
+  const weekly = flag('--weekly');
+  const asJson = flag('--json');
+  const quietIfEmpty = flag('--quiet-if-empty');
+  const outFile = opt('--out');
+  const days = Number.parseInt(opt('--days') ?? '', 10) || undefined;
+  const now = nowSeoul();
+  const emit = (text: string): void => {
+    if (outFile) fs.writeFileSync(outFile, `${text}\n`, 'utf8');
+    else out(text);
+  };
+  try {
+    await rt.sessionManager.load();
+    let text: string;
+    let empty: boolean;
+    let payload: unknown;
+    if (weekly) {
+      const p = await rt.service.getWeeklyStudyPlan({ background: true });
+      const dueDays = p.days.filter((d) => d.deadlines.length);
+      empty = dueDays.length === 0 && p.overdue.length === 0;
+      const lines = [`📅 이번 주 학습 계획 (${p.weekStart} ~ ${p.weekEnd})`];
+      if (p.overdue.length) lines.push(`❗ 기한 초과 ${p.overdue.length}건: ${p.overdue.map((d) => d.title).join(', ')}`);
+      for (const d of dueDays) lines.push(`- ${d.label}: ${d.deadlines.map((x) => x.title).join(', ')}`);
+      if (empty) lines.push('이번 주 확인된 마감이 없습니다.');
+      text = lines.join('\n');
+      payload = p;
+    } else {
+      const b = await rt.service.getDailyBriefing({ days, background: true });
+      const order: Array<[keyof typeof b.buckets, string]> = [['overdue', '❗ 기한 초과'], ['today', '🔴 오늘'], ['tomorrow', '🟠 내일'], ['this_week', '🔵 이번 주']];
+      const sections: string[] = [];
+      for (const [k, label] of order) {
+        const items = b.buckets[k];
+        if (!items.length) continue;
+        sections.push(`${label} (${items.length})`);
+        for (const d of items) sections.push(`  - ${d.title}${d.courseName ? ` · ${d.courseName}` : ''} — ${relativeKo(fromIso(d.dueAt), now)}`);
+      }
+      const newCount = b.newAnnouncements.length;
+      empty = sections.length === 0 && newCount === 0;
+      const lines = [`🎓 전북대 LMS 브리핑 · ${b.todayLabel}`];
+      if (sections.length) lines.push(...sections);
+      if (newCount) lines.push(`🆕 새 공지 ${newCount}건: ${b.newAnnouncements.slice(0, 5).map((a) => a.title).join(', ')}`);
+      if (empty) lines.push('오늘 처리할 마감·새 공지가 없습니다.');
+      text = lines.join('\n');
+      payload = b;
+    }
+    if (empty && quietIfEmpty) return 0;
+    emit(asJson ? JSON.stringify(payload, null, 2) : text);
+    return 0;
+  } catch (e) {
+    const err = toLmsError(e);
+    if (err.kind === 'AUTH_REQUIRED' || err.kind === 'AUTH_EXPIRED') {
+      if (!quietIfEmpty) emit('⚠️ LMS 세션이 없거나 만료되었습니다. 한 번 로그인해 주세요: jbnu-lms-mcp login --plain (예약 실행은 로그인 창을 열지 않습니다).');
+      return 2;
+    }
+    emit(formatUserError(e, { operation: '브리핑 생성' }));
     return 1;
   }
 }
@@ -83,7 +180,7 @@ async function cmdLogout(): Promise<number> {
     out(`세션 삭제: ${r.removedSession ? '완료' : '없음'} · 브라우저 프로필 삭제: ${r.removedProfile ? '완료' : '유지'}`);
     return 0;
   } catch (e) {
-    out(formatUserError(e));
+    out(formatUserError(e, { operation: 'LMS 연결 해제', impact: '로컬 연결 정보가 일부 정리되었을 수 있습니다. LMS 원본 데이터는 변경되지 않았습니다.' }));
     return 1;
   }
 }
@@ -91,8 +188,8 @@ async function cmdLogout(): Promise<number> {
 async function cmdDoctor(): Promise<number> {
   const rt = buildRuntime();
   const checks: Array<[string, boolean | null, string]> = [];
-  const nodeOk = Number(process.versions.node.split('.')[0]) >= 20;
-  checks.push(['Node.js 20 이상', nodeOk, process.versions.node]);
+  const nodeOk = Number(process.versions.node.split('.')[0]) >= 22;
+  checks.push(['Node.js 22 이상', nodeOk, process.versions.node]);
   const browser = findBrowser(rt.config.browserPreference);
   checks.push(['Chrome/Edge 브라우저', Boolean(browser), browser ? `${browser.displayName} (${browser.path})` : 'JBNU_LMS_BROWSER 로 경로 지정 가능']);
   checks.push(['DPAPI 저장소', process.platform === 'win32', process.platform === 'win32' ? rt.config.sessionFile : '이 플랫폼은 평문 파일 저장(경고)']);
@@ -112,6 +209,12 @@ async function cmdDoctor(): Promise<number> {
   await rt.sessionManager.load();
   const st = await rt.sessionManager.getStatus({ verify: false });
   checks.push(['저장된 세션', st.connected ? true : null, st.message]);
+  const feedback = await rt.feedback.status();
+  checks.push([
+    '피드백 수집',
+    feedback.configurationWarning ? false : feedback.collectorMode === 'remote' ? true : null,
+    feedback.configurationWarning ?? (feedback.collectorMode === 'remote' ? `HTTPS 원격 수집기 ${feedback.collectorOrigin}` : '로컬 접수 모드(원격 URL 선택 사항)'),
+  ]);
   checks.push(['데이터 폴더', fs.existsSync(rt.config.dataDir) || true, rt.config.dataDir]);
   for (const [name, okv, detail] of checks) out(`${okv === true ? '✅' : okv === null ? '➖' : '❌'} ${name}: ${detail}`);
   return checks.some(([, v]) => v === false) ? 1 : 0;
@@ -155,13 +258,14 @@ async function cmdConfig(): Promise<number> {
 }
 
 async function main(): Promise<void> {
+  await ensureSqlite();
   const cmd = process.argv[2] && !process.argv[2].startsWith('-') ? process.argv[2] : 'serve';
   if (flag('--version') || cmd === 'version') {
     out(`${APP_NAME} ${APP_VERSION}`);
     return;
   }
   if (cmd === 'help' || flag('--help')) {
-    out(`${APP_NAME} ${APP_VERSION}\n\n사용법:\n  jbnu-lms-mcp serve                     MCP STDIO 서버 실행 (기본)\n  jbnu-lms-mcp login [--plain] [--wait N]  브라우저로 LMS 로그인\n  jbnu-lms-mcp status [--verify]           연결 상태\n  jbnu-lms-mcp logout [--delete-profile]   연결 해제\n  jbnu-lms-mcp doctor                      환경 점검\n  jbnu-lms-mcp config [--client claude|codex] [--write]  MCP 클라이언트 설정`);
+    out(`${APP_NAME} ${APP_VERSION}\n\n사용법:\n  jbnu-lms-mcp serve                     MCP STDIO 서버 실행 (기본)\n  jbnu-lms-mcp login [--plain] [--wait N]  브라우저로 LMS 로그인\n  jbnu-lms-mcp status [--verify]           연결 상태\n  jbnu-lms-mcp verify                      로그인한 브라우저 프로필에서 세션만 검증·저장\n  jbnu-lms-mcp brief [--weekly] [--days N] [--json] [--quiet-if-empty] [--out F]  예약용 브리핑(로그인 창 안 뜸)\n  jbnu-lms-mcp logout [--delete-profile]   연결 해제\n  jbnu-lms-mcp doctor                      환경 점검\n  jbnu-lms-mcp config [--client claude|codex] [--write]  MCP 클라이언트 설정`);
     return;
   }
   let code = 0;
@@ -174,6 +278,12 @@ async function main(): Promise<void> {
       break;
     case 'status':
       code = await cmdStatus();
+      break;
+    case 'verify':
+      code = await cmdVerify();
+      break;
+    case 'brief':
+      code = await cmdBrief();
       break;
     case 'logout':
       code = await cmdLogout();
@@ -192,6 +302,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  process.stderr.write(`${formatUserError(e)}\n`);
+  process.stderr.write(`${formatUserError(e, { operation: '명령 실행' })}\n`);
   process.exit(1);
 });

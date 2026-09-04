@@ -1,0 +1,8 @@
+server/node_modules/**/test/**
+server/node_modules/**/tests/**
+server/node_modules/**/spec/fixtures/**
+server/node_modules/**/fixtures/**
+server/node_modules/**/*.map
+server/node_modules/**/*.ts
+server/node_modules/**/docs/**
+server/node_modules/**/examples/**

@@ -84,6 +84,14 @@ export async function startMockLms(): Promise<MockLms> {
       }
       return html('<html>ok</html>');
     }
+    if (p === '/rate-limited') {
+      res.writeHead(429, { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': '7' });
+      return res.end('<html>slow down</html>');
+    }
+    if (p === '/maintenance') {
+      res.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8', 'Retry-After': '120' });
+      return res.end('<html>maintenance</html>');
+    }
     if (p === '/redirect-external') {
       res.writeHead(302, { Location: 'http://evil.example.invalid/steal' });
       return res.end();
@@ -104,6 +112,9 @@ export async function startMockLms(): Promise<MockLms> {
         return json([{ error: true, exception: { errorcode: 'invalidparameter', message: 'bad json' } }]);
       }
       const results = calls.map((c) => {
+        if (c.methodname === 'core_calendar_get_action_events_by_timesort' && Number(c.args.limitnum) > 50) {
+          return { error: true, exception: { errorcode: 'invalidparameter', message: 'Limit must be between 1 and 50 (inclusive)' } };
+        }
         const data = ajaxData[c.methodname];
         if (data === undefined) return { error: true, exception: { errorcode: 'invalidrecord', message: `unknown ${c.methodname}` } };
         if (c.methodname === 'core_courseformat_get_state') {

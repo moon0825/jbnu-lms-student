@@ -1,0 +1,36 @@
+{
+  "name": "jbnu-lms-student",
+  "version": "0.6.0",
+  "description": "전북대 학생의 공지·과제·마감·수업자료를 안전하게 정리하는 비공식 LMS 학업 도우미입니다.",
+  "author": {
+    "name": "JBNU LMS MCP Contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "jbnu",
+    "lms",
+    "moodle",
+    "student"
+  ],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "전북대 LMS 학업비서",
+    "shortDescription": "공지·과제·마감·제출 상태를 놓치지 않게 확인하는 학생 도우미",
+    "longDescription": "놓치면 안 되는 공지·과제·마감과 제출 상태, 수업자료를 학생의 실제 LMS 권한 안에서 읽고 우선순위로 정리합니다. 캘린더 반영 전에는 확정 후보만 만들고 중복 확인을 요구합니다. 공식 SSO 로그인과 패스키는 사용자가 직접 완료하며 인증정보는 Windows 보안 저장소에만 보관합니다. 전북대학교가 운영하거나 보증하는 공식 서비스가 아닌 비공식 학생 도구입니다.",
+    "developerName": "JBNU LMS MCP Contributors",
+    "category": "Education",
+    "capabilities": [
+      "Read",
+      "Interactive"
+    ],
+    "brandColor": "#A6155F",
+    "composerIcon": "./assets/jbnu-emblem.png",
+    "logo": "./assets/jbnu-signature.png",
+    "defaultPrompt": [
+      "오늘 놓치면 안 되는 공지와 마감을 학생 확인함으로 정리해줘.",
+      "이번 주 과제를 제출 상태와 남은 시간 기준으로 계획해줘.",
+      "이 과제가 최종 제출됐는지 LMS에서 다시 확인해줘."
+    ]
+  }
+}

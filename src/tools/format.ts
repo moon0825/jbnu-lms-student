@@ -35,7 +35,27 @@ export function header(status: AuthStatus | null, title: string, sources: Iterab
 
 export function notesBlock(notes: Note[]): string {
   if (!notes.length) return '';
-  return `\n${notes.map((n) => `${n.level === 'warn' ? '⚠️' : 'ℹ️'} ${n.text}`).join('\n')}\n`;
+  const warnings = notes.filter((n) => n.level === 'warn');
+  const infos = notes.filter((n) => n.level === 'info');
+  const lines: string[] = [];
+  if (warnings.length) {
+    lines.push(`### ⚠️ 일부 정보 확인 필요 (${warnings.length}건)`);
+    lines.push(...warnings.map((n) => `- ${n.text}`));
+  }
+  if (infos.length) {
+    if (lines.length) lines.push('');
+    lines.push(...infos.map((n) => `ℹ️ ${n.text}`));
+  }
+  return `\n\n${lines.join('\n')}\n`;
+}
+
+/** 빈 결과와 부분 조회 실패를 명확히 구분한다. */
+export function emptyState(notes: Note[], verifiedText: string): string {
+  const failed = notes.filter((n) => n.level === 'warn');
+  if (!failed.length) return `✅ ${verifiedText}`;
+  const scopes = Array.from(new Set(failed.map((n) => n.scope).filter((v): v is string => Boolean(v))));
+  const scopeText = scopes.length ? ` 영향 범위: ${scopes.slice(0, 3).join(', ')}${scopes.length > 3 ? ` 외 ${scopes.length - 3}곳` : ''}.` : '';
+  return `⚠️ 확인된 항목은 0건이지만 ${failed.length}건의 조회가 실패해 전체 결과가 아닐 수 있습니다.${scopeText}`;
 }
 
 export function fmtCourse(c: Course): string {

@@ -39,5 +39,7 @@ export class MemoryCache {
 
   clear(): void {
     this.map.clear();
+    // 진행 중이던 요청 결과가 새 계정 캐시로 채워지지 않도록 in-flight 도 버린다.
+    this.inflight.clear();
   }
 }

@@ -41,8 +41,8 @@
     ],
     "cm": [
       { "id": 3001, "name": "공지사항", "visible": true, "uservisible": true, "sectionid": 7000, "sectionnumber": 0, "module": "ubboard", "url": "http://localhost/mod/ubboard/view.php?id=3001" },
-      { "id": 4001, "name": "1주차 강의자료", "visible": true, "uservisible": true, "sectionid": 7001, "sectionnumber": 1, "module": "resource", "url": "http://localhost/mod/resource/view.php?id=4001" },
-      { "id": 4002, "name": "1주차 동영상 강의", "visible": true, "uservisible": true, "sectionid": 7001, "sectionnumber": 1, "module": "vod", "url": "http://localhost/mod/vod/view.php?id=4002" },
+      { "id": 4001, "name": "1주차 강의자료", "visible": true, "uservisible": true, "sectionid": 7001, "sectionnumber": 1, "module": "resource", "url": "http://localhost/mod/resource/view.php?id=4001", "completionstate": 1 },
+      { "id": 4002, "name": "1주차 동영상 강의", "visible": true, "uservisible": true, "sectionid": 7001, "sectionnumber": 1, "module": "vod", "url": "http://localhost/mod/vod/view.php?id=4002", "completionstate": 0 },
       { "id": 4003, "name": "2주차 실습 자료", "visible": true, "uservisible": true, "sectionid": 7002, "sectionnumber": 2, "module": "folder", "url": "http://localhost/mod/folder/view.php?id=4003" },
       { "id": 5001, "name": "과제 1: 보고서", "visible": true, "uservisible": true, "sectionid": 7002, "sectionnumber": 2, "module": "assign", "url": "http://localhost/mod/assign/view.php?id=5001" },
       { "id": 4004, "name": "참고 링크", "visible": true, "uservisible": false, "sectionid": 7002, "sectionnumber": 2, "module": "url", "url": "http://localhost/mod/url/view.php?id=4004", "hascmrestrictions": true }

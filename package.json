@@ -1,26 +1,55 @@
 {
   "name": "jbnu-lms-mcp",
-  "version": "0.1.0",
-  "description": "전북대학교 LMS(JBNU LXP, Moodle/Coursemos) 학생용 읽기 전용 MCP 서버 (Windows 로컬 STDIO)",
+  "version": "0.7.0",
+  "description": "전북대학교 LMS 학생용 조회·학업지원·피드백 MCP 서버 (Windows 로컬 STDIO)",
   "type": "module",
-  "private": true,
+  "private": false,
   "license": "MIT",
+  "author": "JBNU LMS MCP Contributors",
+  "keywords": [
+    "mcp",
+    "moodle",
+    "jbnu",
+    "lms",
+    "education"
+  ],
+  "os": [
+    "win32"
+  ],
+  "files": [
+    "dist/",
+    "assets/",
+    "skills/",
+    ".codex-plugin/",
+    ".mcp.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "bin": {
     "jbnu-lms-mcp": "dist/cli.js"
   },
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.json",
     "dev": "tsx src/cli.ts serve",
     "start": "node dist/cli.js serve",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "test:security": "vitest run tests/security",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "check:secrets": "node scripts/check-secrets.mjs",
+    "release:check": "npm run typecheck && npm test && npm run check:secrets && npm pack --dry-run",
+    "release:mcpb": "npm run build && node scripts/build-mcpb.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run release:check",
     "login": "tsx src/cli.ts login",
     "status": "tsx src/cli.ts status",
     "logout": "tsx src/cli.ts logout",
@@ -34,10 +63,11 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@types/luxon": "^3.7.5",
     "@types/node": "^22.20.1",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
-    "vitest": "^5.0.0"
+    "vitest": "4.0.15"
   }
 }

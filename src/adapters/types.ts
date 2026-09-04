@@ -117,6 +117,11 @@ export interface CourseModule {
   files: Attachment[];
   /** 모듈에 붙은 일정 (예: 마감 일시) */
   dates: Array<{ label: string; at: string }>;
+  /**
+   * 이수(완료) 추적 상태. null 이면 이 활동에 완료 추적이 설정되지 않았거나 확인하지 못함.
+   * 0=미완료, 1=완료, 2=완료(통과), 3=완료(미통과이나 이수 처리). Moodle completionstate 값.
+   */
+  completionState?: number | null;
 }
 
 export interface CourseSection {
@@ -176,4 +181,10 @@ export interface AuthStatus {
 export interface Note {
   level: 'info' | 'warn';
   text: string;
+  /** 부분 실패를 기계적으로 처리할 때 쓰는 안정적인 오류 종류 */
+  code?: import('../errors.js').ErrorKind;
+  /** 영향을 받은 강좌·기능 범위 */
+  scope?: string;
+  retryable?: boolean;
+  recoveryAction?: import('../errors.js').RecoveryAction | null;
 }

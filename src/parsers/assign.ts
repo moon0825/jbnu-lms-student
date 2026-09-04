@@ -5,8 +5,10 @@
  */
 import * as cheerio from 'cheerio';
 import type { Attachment, SubmissionState } from '../adapters/types.js';
+import { LmsError } from '../errors.js';
 import { collapse, htmlToText, parseIntSafe, queryParam } from '../text.js';
 import { parseKoreanDateTime, toIso } from '../time.js';
+import { hasKnownEmptyState, normalizeLabel, parserCompatibility, type ParserCompatibility } from './compat.js';
 
 export interface AssignIndexRow {
   cmId: number | null;
@@ -35,6 +37,12 @@ export interface AssignViewData {
   timeRemainingText: string | null;
   gradeText: string | null;
   submissionState: SubmissionState;
+  compatibility: ParserCompatibility;
+}
+
+export interface AssignIndexPage {
+  rows: AssignIndexRow[];
+  compatibility: ParserCompatibility;
 }
 
 const RE_DUE = /^(마감\s*일시|마감일|마감|제출\s*마감|due\s*date|due)$/i;
@@ -64,12 +72,14 @@ export function classifySubmissionText(text: string | null | undefined): Submiss
   return 'unknown';
 }
 
-export function parseAssignIndex(html: string, baseUrl: string): AssignIndexRow[] {
+export function parseAssignIndexPage(html: string, baseUrl: string): AssignIndexPage {
   const $ = cheerio.load(html);
   const rows: AssignIndexRow[] = [];
+  let matchedTable = false;
   $('table').each((_, table) => {
     const $t = $(table);
     if (!$t.find('a[href*="/mod/assign/view.php"]').length) return;
+    matchedTable = true;
     const headers = $t.find('thead th, tr:first-child th').map((__, th) => collapse($(th).text())).get();
     const idx = (re: RegExp): number => headers.findIndex((h) => re.test(h));
     const iTitle = idx(/과제|assignment|이름|name/i);
@@ -101,14 +111,46 @@ export function parseAssignIndex(html: string, baseUrl: string): AssignIndexRow[
       });
     });
   });
-  return rows;
+
+  if (rows.length) return { rows, compatibility: parserCompatibility('assignment-table') };
+
+  // 테이블이 카드·목록 UI로 바뀐 경우에도 안정적인 모듈 URL로 최소 필드를 복구한다.
+  const seen = new Set<number>();
+  $('a[href*="/mod/assign/view.php"]').each((_, a) => {
+    const link = $(a);
+    const href = abs(link.attr('href'), baseUrl);
+    const cmId = parseIntSafe(queryParam(href, 'id'));
+    if (!href || !cmId || seen.has(cmId)) return;
+    const scope = link.closest('li, article, .card, .activity-item, .list-group-item, [data-region="activity"]');
+    const container = scope.length ? scope : link.parent();
+    const title = collapse(link.text()) || collapse(link.attr('title') ?? '') || collapse(link.attr('aria-label') ?? '');
+    if (!title) return;
+    const time = container.find('time, [data-field="due"], .due-date, .duedate').first();
+    const dueText = collapse(time.attr('datetime') ?? time.text()) || null;
+    const statusText = collapse(container.find('[data-field="submission-status"], .submission-status, .status').first().text()) || null;
+    const gradeText = collapse(container.find('[data-field="grade"], .grade').first().text()) || null;
+    const sectionTitle = collapse(container.closest('section, [data-for="section"]').find('h2, h3, .sectionname, [data-for="section_title"]').first().text()) || null;
+    seen.add(cmId);
+    rows.push({ cmId, title, url: href, sectionTitle, dueText, dueAt: toIso(parseKoreanDateTime(dueText)), submissionStatusText: statusText, gradeText });
+  });
+  if (rows.length) return { rows, compatibility: parserCompatibility('semantic-assignment-links', 'fallback', ['과제 목록 CSS 변경 후보']) };
+
+  if (matchedTable || hasKnownEmptyState(collapse($('body').text()), [/과제가\s*없/i, /과제물(?:들)?(?:이|가|들가)?\s*없/i])) {
+    return { rows: [], compatibility: parserCompatibility(matchedTable ? 'empty-assignment-table' : 'recognized-empty-state') };
+  }
+  throw new LmsError('PARSE', '과제 목록 영역과 정상 빈 화면을 모두 찾지 못했습니다');
+}
+
+/** 기존 호출자를 위한 배열 반환 API. 새 코드는 parseAssignIndexPage로 호환성 정보도 확인한다. */
+export function parseAssignIndex(html: string, baseUrl: string): AssignIndexRow[] {
+  return parseAssignIndexPage(html, baseUrl).rows;
 }
 
 export function parseAssignView(html: string, baseUrl: string, pageUrl?: string): AssignViewData {
   const $ = cheerio.load(html);
   const title = collapse($('.page-header-headings h1, #page-header h1, h1, h2.main').first().text()) || '(제목 없음)';
 
-  const descEl = $('#intro, .activity-description, [data-region="activity-information"] ~ .activity-description, .assign-intro, .box.generalbox.boxaligncenter').first();
+  const descEl = $('#intro, .activity-description, [data-region="activity-information"] ~ .activity-description, .assign-intro, .box.generalbox.boxaligncenter, [data-region="activity-description"], .assignment-description').first();
   const descriptionText = htmlToText(descEl.html() ?? '');
 
   const attachments: Attachment[] = [];
@@ -135,11 +177,37 @@ export function parseAssignView(html: string, baseUrl: string, pageUrl?: string)
     if (key && value && !(key in statusTable)) statusTable[key] = value;
   });
   // Moodle 4.x 활동 일정 영역 ("허용 시작: ...", "마감: ...")
-  $('.activity-dates div, [data-region="activity-dates"] div, .activity-dates').each((_, d) => {
-    const text = collapse($(d).text());
-    const m = text.match(/^([^:：]+)[:：]\s*(.+)$/);
+  // 컨테이너 자신을 매칭하면 여러 날짜가 한 값으로 뭉개지므로, 개별 항목(자식 div)만 파싱하고
+  // 자식 div 가 없을 때만 컨테이너 텍스트를 줄 단위로 나눠 파싱한다.
+  const addDatePart = (raw: string): void => {
+    const m = collapse(raw).match(/^([^:：]+)[:：]\s*(.+)$/);
     if (m && !(m[1].trim() in statusTable)) statusTable[m[1].trim()] = m[2].trim();
+  };
+  $('.activity-dates, [data-region="activity-dates"]').each((_, container) => {
+    const childDivs = $(container).children('div');
+    if (childDivs.length) childDivs.each((__, d) => addDatePart($(d).text()));
+    else for (const line of $(container).text().split(/\n+/)) addDatePart(line);
   });
+  // 정의 목록이나 data-label 기반 카드로 바뀐 상태 영역을 지원한다.
+  $('dt').each((_, dt) => {
+    const dd = $(dt).next('dd');
+    const key = normalizeLabel(collapse($(dt).text()));
+    const value = collapse(dd.text());
+    if (key && value && !(key in statusTable)) statusTable[key] = value;
+  });
+  $('[data-label]').each((_, el) => {
+    const key = normalizeLabel(collapse($(el).attr('data-label') ?? ''));
+    const value = collapse($(el).attr('data-value') ?? $(el).find('[data-value], .value').first().text() ?? $(el).text());
+    if (key && value && !(key in statusTable)) statusTable[key] = value;
+  });
+
+  const pageIdentity = `${$('body').attr('id') ?? ''} ${$('body').attr('class') ?? ''}`;
+  if (!Object.keys(statusTable).length && !descriptionText && !attachments.length && !submittedFiles.length && !/mod-assign|assign-view|page-mod-assign/i.test(pageIdentity)) {
+    throw new LmsError('PARSE', '과제 상세 영역을 찾지 못했습니다');
+  }
+  const compatibility = Object.keys(statusTable).length
+    ? parserCompatibility($('table.generaltable, .submissionstatustable, .submissionsummarytable').length ? 'assignment-status-table' : 'semantic-status-fields', $('table.generaltable, .submissionstatustable, .submissionsummarytable').length ? 'high' : 'fallback', $('table.generaltable, .submissionstatustable, .submissionsummarytable').length ? [] : ['과제 상태 CSS 변경 후보'])
+    : parserCompatibility('assignment-content-only', 'fallback', ['과제 상태 필드를 찾지 못함']);
 
   const find = (re: RegExp, exclude?: RegExp): string | null => {
     for (const [k, v] of Object.entries(statusTable)) {
@@ -171,5 +239,6 @@ export function parseAssignView(html: string, baseUrl: string, pageUrl?: string)
     timeRemainingText,
     gradeText,
     submissionState: classifySubmissionText(submissionStatusText),
+    compatibility,
   };
 }

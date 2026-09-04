@@ -61,6 +61,7 @@ describe('도구 응답에 비밀값이 없다', () => {
       ['get_course_materials', { course_id: 101 }],
       ['get_daily_briefing', {}],
       ['get_recent_changes', {}],
+      ['report_lms_problem', { summary: '보안 마스킹 확인 신고', details: `로그인 오류가 발생했습니다. MoodleSession=${VALID_COOKIE} sesskey=${VALID_SESSKEY} token=${VALID_TOKEN}`, confirm_submit: true }],
     ];
     for (const [name, args] of calls) {
       const r = await h.callText(name, args);
@@ -72,6 +73,8 @@ describe('도구 응답에 비밀값이 없다', () => {
     // 과제 본문·공지 본문이 로그에 남지 않는다
     expect(logs).not.toContain('A4 5페이지 이내');
     expect(logs).not.toContain('10월 20일(월)');
+    const feedbackFiles = fs.readdirSync(path.join(h.dataDir, 'feedback')).map((name) => fs.readFileSync(path.join(h.dataDir, 'feedback', name), 'utf8')).join('\n');
+    for (const s of SECRETS) expect(feedbackFiles, '피드백 로컬 파일에 비밀값').not.toContain(s);
   });
   it('쿠키는 LMS 호스트로만 전송된다', () => {
     for (const req of h.mock.requests) {

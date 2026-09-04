@@ -133,7 +133,9 @@ export class MoodleAjaxAdapter {
   }
 
   async getActionEvents(fromUnixSec: number, toUnixSec?: number, limit = 50): Promise<AjaxActionEvent[]> {
-    const args: Record<string, unknown> = { timesortfrom: Math.floor(fromUnixSec), limitnum: limit, limittononsuspendedevents: true };
+    // JBNU Moodle은 문서상의 일반 호출보다 엄격하게 limitnum 1..50만 허용한다.
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 50);
+    const args: Record<string, unknown> = { timesortfrom: Math.floor(fromUnixSec), limitnum: safeLimit, limittononsuspendedevents: true };
     if (toUnixSec) args.timesortto = Math.floor(toUnixSec);
     const data = await this.call<{ events: AjaxActionEvent[] }>('core_calendar_get_action_events_by_timesort', args);
     return data.events ?? [];

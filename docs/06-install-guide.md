@@ -5,7 +5,7 @@
 | 항목 | 확인 방법 | 비고 |
 |---|---|---|
 | Windows 10/11 | — | DPAPI 로 세션을 암호화한다 |
-| Node.js 20 이상 | `node --version` | https://nodejs.org LTS |
+| Node.js 22 이상 | `node --version` | `node:sqlite`를 포함한 LTS 필요 |
 | Google Chrome 또는 Microsoft Edge | 시작 메뉴 | 로그인 창과 세션 검증에 사용. Edge 는 Windows 11 기본 포함 |
 | Claude Desktop 또는 Codex | — | MCP 클라이언트 |
 | 전북대 통합인증 계정(패스키 또는 2차 인증) | — | 로그인은 본인이 직접 |
@@ -54,7 +54,7 @@ Claude Desktop 설정 파일 위치: `%APPDATA%\Claude\claude_desktop_config.jso
   "mcpServers": {
     "jbnu-lms": {
       "command": "node",
-      "args": ["C:\\Users\\<이름>\\Documents\\jbnu-lms-mcp\\dist\\cli.js", "serve"],
+      "args": ["--disable-warning=ExperimentalWarning", "--experimental-sqlite", "C:\\Users\\<이름>\\Documents\\jbnu-lms-mcp\\dist\\cli.js", "serve"],
       "env": { "JBNU_LMS_LOG_LEVEL": "warn" }
     }
   }
@@ -66,19 +66,23 @@ Codex: `~/.codex/config.toml`
 ```toml
 [mcp_servers.jbnu-lms]
 command = "node"
-args = ["C:\\Users\\<이름>\\Documents\\jbnu-lms-mcp\\dist\\cli.js", "serve"]
+args = ["--disable-warning=ExperimentalWarning", "--experimental-sqlite", "C:\\Users\\<이름>\\Documents\\jbnu-lms-mcp\\dist\\cli.js", "serve"]
 ```
 
 ## 4. 첫 로그인
 
 두 가지 중 하나.
 
-**A. 대화에서 자동**: Claude Desktop 을 재시작하고 "오늘 해야 할 일 알려줘" 라고 묻는다. 로그인 창이 열리면 통합인증을 완료한다. 창은 LMS 홈이 뜨면 자동으로 닫힌다.
+**A. 대화에서 자동**: Claude Desktop 또는 Codex 를 재시작하고 "오늘 해야 할 일 알려줘" 라고 묻는다.
+로그인 창이 열리면 세 번째 `아이디 로그인` 탭에서 아이디·비밀번호로 1차 인증하고, 다음 2차 인증 화면에서
+`패스키`를 선택한다. 두 번째 `패스키 인증 로그인` 탭과 혼동하지 않는다. 실제 수강 과목이 보이는 LMS 화면에 도착하면 창을 닫지 않고 기다린다.
+도구가 세션을 보존해 저장한 뒤 전용 Chrome 창을 자동으로 닫는다.
+세션 검증 뒤 LMS 세션은 DPAPI로 암호화 저장된다. 전용 브라우저에는 원문 보기 재사용을 위해 Chrome이 암호화한 LMS 쿠키만 남고, 비밀번호·자동완성·방문 기록·SSO 쿠키·사이트 저장소·캐시는 정리된다. 프로필 유지가 싫으면 `JBNU_LMS_RETAIN_BROWSER_PROFILE=0`을 설정한다.
 
 **B. 명령행에서 미리**:
 
 ```powershell
-node dist\cli.js login
+node dist\cli.js login --plain
 ```
 
 로그인 뒤 상태 확인:
@@ -87,9 +91,29 @@ node dist\cli.js login
 node dist\cli.js status --verify
 ```
 
+로그인 창을 이미 닫았다면 브라우저를 다시 열지 않고 세션만 저장할 수 있다.
+
+```powershell
+node dist\cli.js verify
+```
+
 `✅ 연결됨` 과 이름이 보이면 끝. 세션은 `%LOCALAPPDATA%\jbnu-lms-mcp\session.dpapi` 에 암호화되어 저장된다.
 
-## 5. 업데이트
+## 5. 문제 신고·기능 제안 수집 설정(선택)
+
+설정하지 않아도 `report_lms_problem`과 `suggest_lms_feature`는 이 PC의 `%LOCALAPPDATA%\jbnu-lms-mcp\feedback`에 즉시 접수된다. 중앙 수집 서버를 운영하는 경우에만 MCP 설정의 `env`에 다음을 추가한다.
+
+```json
+{
+  "JBNU_LMS_FEEDBACK_URL": "https://feedback.example.org/v1/reports",
+  "JBNU_LMS_FEEDBACK_TOKEN": "배포물과 분리된 선택적 토큰",
+  "JBNU_LMS_FEEDBACK_TIMEOUT_MS": "8000"
+}
+```
+
+외부 URL은 HTTPS만 허용한다. 토큰을 코드, `.mcp.json`, 설치 예제 또는 Git에 넣지 않는다. 실제 수집 JSON과 동의·재전송 계약은 `docs/14-feedback-collection.md`를 따른다.
+
+## 6. 업데이트
 
 ```powershell
 git pull
@@ -99,7 +123,7 @@ npm run build
 
 설정 파일의 경로는 그대로이므로 다시 등록할 필요가 없다. Claude Desktop 은 재시작한다.
 
-## 6. 제거
+## 7. 제거
 
 ```powershell
 node dist\cli.js logout --delete-profile --delete-snapshot

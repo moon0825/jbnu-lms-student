@@ -5,7 +5,8 @@
 import { LmsError } from '../errors.js';
 import type { LmsHttpClient } from '../http/client.js';
 import type { Logger } from '../logging.js';
-import { parseAssignIndex, parseAssignView, type AssignIndexRow, type AssignViewData } from '../parsers/assign.js';
+import { parseAssignIndexPage, parseAssignView, type AssignIndexRow, type AssignViewData } from '../parsers/assign.js';
+import type { ParserCompatibility } from '../parsers/compat.js';
 import { parseCoursePage, type ParsedCoursePage } from '../parsers/course-page.js';
 import { parseFileLinks, parseManageTokens, parseMyCourses, type FoundToken, type MyCourseLink } from '../parsers/misc.js';
 import { parsePageMeta, type PageMeta } from '../parsers/page-meta.js';
@@ -32,6 +33,13 @@ export class JbnuSessionAdapter {
 
   get baseUrl(): string {
     return this.http.baseUrl;
+  }
+
+  /** 사용자 데이터나 HTML을 남기지 않고 파서 레이아웃 변화만 관찰한다. */
+  private observeParser(parser: string, compatibility: ParserCompatibility): void {
+    const payload = { parser, contractVersion: compatibility.contractVersion, layout: compatibility.layout, warnings: compatibility.warnings };
+    if (compatibility.confidence === 'fallback') this.logger.warn('LMS 화면 호환 모드 사용', payload);
+    else this.logger.debug('LMS 화면 파서 프로필', payload);
   }
 
   /** HTML 페이지를 가져오고 로그인 화면이면 세션 만료로 처리한다. */
@@ -68,6 +76,7 @@ export class JbnuSessionAdapter {
   async getCoursePage(courseId: number): Promise<ParsedCoursePage> {
     const { html } = await this.fetchPage(`/course/view.php?id=${courseId}`, 5 * 60_000);
     const parsed = parseCoursePage(html, this.baseUrl);
+    this.observeParser('course-page', parsed.compatibility);
     if (!parsed.courseId) parsed.courseId = courseId;
     return parsed;
   }
@@ -76,6 +85,7 @@ export class JbnuSessionAdapter {
     const url = `/mod/ubboard/view.php?id=${cmId}${page > 1 ? `&page=${page}` : ''}`;
     const { html } = await this.fetchPage(url);
     const parsed = parseUbboardList(html, this.baseUrl, `${this.baseUrl}${url}`);
+    this.observeParser('ubboard-list', parsed.compatibility);
     if (!parsed.cmId) parsed.cmId = cmId;
     return parsed;
   }
@@ -83,18 +93,24 @@ export class JbnuSessionAdapter {
   async getUbboardArticle(cmId: number, bwid: number): Promise<UbboardArticle> {
     const url = `/mod/ubboard/article.php?id=${cmId}&bwid=${bwid}`;
     const { html } = await this.fetchPage(url, 5 * 60_000);
-    return parseUbboardArticle(html, this.baseUrl, `${this.baseUrl}${url}`);
+    const parsed = parseUbboardArticle(html, this.baseUrl, `${this.baseUrl}${url}`);
+    this.observeParser('ubboard-article', parsed.compatibility);
+    return parsed;
   }
 
   async getAssignIndex(courseId: number): Promise<AssignIndexRow[]> {
     const { html } = await this.fetchPage(`/mod/assign/index.php?id=${courseId}`);
-    return parseAssignIndex(html, this.baseUrl);
+    const parsed = parseAssignIndexPage(html, this.baseUrl);
+    this.observeParser('assign-index', parsed.compatibility);
+    return parsed.rows;
   }
 
   async getAssignView(cmId: number): Promise<AssignViewData> {
     const url = `/mod/assign/view.php?id=${cmId}`;
     const { html } = await this.fetchPage(url);
-    return parseAssignView(html, this.baseUrl, `${this.baseUrl}${url}`);
+    const parsed = parseAssignView(html, this.baseUrl, `${this.baseUrl}${url}`);
+    this.observeParser('assign-view', parsed.compatibility);
+    return parsed;
   }
 
   /**

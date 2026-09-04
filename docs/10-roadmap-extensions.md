@@ -29,7 +29,7 @@
 |---|---|---|---|
 | 포털 공지 (`www.jbnu.ac.kr` 공지, 학과 공지) | 대부분 공개(비로그인) | `adapters/jbnu-portal-adapter.ts` + `parsers/portal-notice.ts`. RSS 가 있으면 우선 사용 | `get_portal_notices`, `search_portal_notices` |
 | 학사 일정 | 공개 | 일정 페이지/ics 해석 → `Deadline` 모델 재사용 | `get_academic_calendar`, `get_daily_briefing` 에 통합 |
-| 학생 포털(수강·성적·장학) | 통합인증 SSO (LMS 와 같은 `sso.jbnu.ac.kr`) | 같은 브라우저 프로필을 재사용하되 호스트별 쿠키를 분리 저장. `SessionManager` 를 다중 호스트로 확장 | `get_enrollment_status`, `get_scholarship_notices` |
+| 학생 포털(수강·성적·장학) | 통합인증 SSO (LMS 와 같은 `sso.jbnu.ac.kr`) | 서비스별 일회용 로그인 프로필과 DPAPI 세션을 분리. `SessionManager` 를 다중 호스트로 확장 | `get_enrollment_status`, `get_scholarship_notices` |
 | JUIC 연구정보 | SSO 또는 별도 로그인 | 화면 구조 조사 후 결정. 연구비·과제 정보는 민감하므로 읽기 전용 + 응답 최소화 | `get_research_projects`, `get_research_deadlines` |
 
 구현 순서 제안:
@@ -43,7 +43,9 @@
 
 - Windows 작업 스케줄러로 `jbnu-lms-mcp brief --notify` 를 아침마다 실행해 토스트 알림(새 공지·오늘 마감) — 서버 없이 CLI 로 구현 가능
 - Claude Desktop 예약 작업과 연동해 매일 브리핑을 생성
-- 캘린더 연동(ICS 내보내기 또는 사용자 승인 후 캘린더 API 등록)
+- 캘린더 연동은 [LMS 일정 동기화 UX·안전 설계](./16-calendar-sync-ux-plan.md)에 따라 단계적으로 구현한다. LMS MCP는 제공자 중립적인 일정 후보·동기화 계획만 만들고, Codex·Claude 등 호스트가 연결된 캘린더에 반영한다.
+- 기본값은 `도움형 자동`: 구조화된 확정 일정만 1회 상시 동의 범위에서 생성·갱신하고, 애매한 공지·수동 중복·삭제 후보는 검토함에 제안한다.
+- 변화가 없을 때는 조용히 유지하고 생성·변경·충돌·실패·사용자 판단 필요 상황만 알린다.
 
 ## 6. 품질
 
