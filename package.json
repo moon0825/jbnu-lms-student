@@ -1,7 +1,7 @@
 {
   "name": "jbnu-lms-mcp",
-  "version": "0.7.1",
-  "description": "전북대학교 LMS 학생용 조회·학업지원·피드백 MCP 서버 (Windows 로컬 STDIO)",
+  "version": "0.8.0",
+  "description": "전북대학교 LMS 학생용 조회·학업지원·피드백 MCP 서버 (Windows/macOS 로컬 STDIO)",
   "type": "module",
   "private": false,
   "license": "MIT",
@@ -23,7 +23,8 @@
     "education"
   ],
   "os": [
-    "win32"
+    "win32",
+    "darwin"
   ],
   "files": [
     "dist/",

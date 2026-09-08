@@ -78,10 +78,11 @@ export async function verifyBrowserSession(config: AppConfig, logger: Logger, op
       logger.info('브라우저 프로필에 유효한 LMS 세션이 없음');
       return { loggedIn: false, reason: 'LMS 로그인 화면이 표시되었습니다' };
     }
-    const rawCookies = await context.cookies(config.baseUrl);
+    const allCookies = await context.cookies();
+    const rawCookies = allCookies.filter((c) => c.domain.replace(/^\./, '') === config.lmsHost.split(':')[0]);
     const cookies: Record<string, string> = {};
     for (const c of rawCookies) {
-      if (c.domain.replace(/^\./, '') === config.lmsHost.split(':')[0]) cookies[c.name] = c.value;
+      cookies[c.name] = c.value;
     }
     if (!Object.keys(cookies).some((n) => /^MoodleSession/.test(n))) {
       return { loggedIn: false, reason: 'LMS 세션 쿠키를 찾지 못했습니다' };
@@ -93,6 +94,14 @@ export async function verifyBrowserSession(config: AppConfig, logger: Logger, op
       const found = await tryObtainToken(context, config, logger);
       token = found?.token ?? null;
       tokenSource = found?.source ?? null;
+    }
+
+    // 전용 프로필에는 LMS 쿠키만 다시 넣는다. SSO·포털 쿠키를 남기지 않는다.
+    try {
+      await context.clearCookies();
+      if (rawCookies.length) await context.addCookies(rawCookies);
+    } catch (e) {
+      throw new LmsError('STORAGE', '로그인 프로필의 SSO 쿠키를 정리하지 못했습니다', { cause: e });
     }
 
     return {

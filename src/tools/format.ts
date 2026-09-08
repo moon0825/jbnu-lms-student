@@ -124,7 +124,7 @@ export function fmtStatus(s: AuthStatus): string {
     `- 사용자: ${s.displayName ?? '알 수 없음'}`,
     `- 인증 방식: ${{ none: '없음', session: '브라우저 세션 재사용', token: '공식 API 토큰', 'session+token': '브라우저 세션 + 공식 API 토큰' }[s.mode]}`,
     `- 연결 시각: ${s.connectedAt ? formatKo(fromIso(s.connectedAt)) : '-'} · 마지막 확인: ${s.lastVerifiedAt ? formatKo(fromIso(s.lastVerifiedAt)) : '-'} · 마지막 동기화: ${s.lastSyncAt ? formatKo(fromIso(s.lastSyncAt)) : '-'}`,
-    `- 저장 방식: ${s.storageBackend === 'dpapi' ? 'Windows DPAPI 암호화 파일' : s.storageBackend === 'plain' ? '평문 파일(사용자 전용 권한)' : '메모리'}`,
+    `- 저장 방식: ${s.storageBackend === 'dpapi' ? 'Windows DPAPI 암호화 파일' : s.storageBackend === 'keychain' ? 'macOS Keychain' : s.storageBackend === 'plain' ? '평문 파일(사용자 전용 권한)' : '메모리'}`,
     `- 브라우저: ${s.browser ?? '미확인'}`,
     `- 메시지: ${s.message}`,
   ];

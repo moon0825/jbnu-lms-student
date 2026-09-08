@@ -40,7 +40,7 @@ Moodle 소스(MOODLE_405_STABLE)로 확인한 근거:
 
 1. **인증은 사용자가 직접**: 도구는 로그인용 브라우저 창만 열고, 통합인증·패스키·2차 인증은 사용자가 완료한다. 자격 증명은 읽지도 저장하지도 않는다.
    로그인 시작점은 SSO 중계 URL이 아니라 `https://lms.jbnu.ac.kr/my/`이며, Moodle의 로그인 페이지가 만든 공식 리다이렉트 체인만 따른다.
-2. **세션 재사용**: 로그인이 끝난 전용 브라우저 프로필에서 LMS 호스트의 쿠키(`MoodleSession*`)와 `sesskey` 만 추출해 DPAPI 로 암호화 저장한다. 성공하면 LMS 이외 쿠키와 자격 증명·방문 기록·사이트 저장소·캐시를 제거하고, Chrome이 사용자 계정으로 암호화한 LMS 쿠키만 원문 보기용으로 유지한다. 이후 일반 조회는 브라우저 없이 HTTP 로 수행한다.
+2. **세션 재사용**: 로그인이 끝난 전용 브라우저 프로필에서 LMS 호스트의 쿠키(`MoodleSession*`)와 `sesskey` 만 추출해 Windows DPAPI 또는 macOS 로그인 Keychain에 저장한다. 성공하면 LMS 이외 쿠키와 자격 증명·방문 기록·사이트 저장소·캐시를 제거하고, Chrome이 사용자 계정으로 암호화한 LMS 쿠키만 원문 보기용으로 유지한다. 이후 일반 조회는 브라우저 없이 HTTP 로 수행한다.
 3. **데이터 경로 우선순위**: 공식 REST 토큰(있을 때만) → Moodle AJAX API → LMS 화면 해석. 각 응답에 출처를 표시한다.
 4. **전북대 전용 항목**: `mod_ubboard` 공지는 공식 API 가 없으므로 전용 화면 어댑터(`parsers/ubboard.ts`)로 구현한다.
 5. **토큰 기회 확보**: 로그인 검증 시 `user/managetoken.php` 에 기존 모바일 토큰이 있으면 검증 후 사용하고, `launch.php` 도 한 번 시도한다(실패가 정상). 학교 정책이 바뀌면 코드 수정 없이 공식 API 경로가 살아난다.
@@ -49,11 +49,11 @@ Moodle 소스(MOODLE_405_STABLE)로 확인한 근거:
 
 | 방식 | 동작 | 장점 | 위험 |
 |---|---|---|---|
-| plain (**기본**) | 자동화가 전혀 없는 일반 브라우저를 띄움. 창 제목과 전용 프로필의 최신 host/path 메타데이터가 일치하면 앱이 시작한 PID 트리만 세션 보존 종료하고 쿠키를 Windows DPAPI로 복호화·검증한 뒤 최소 원문 보기 프로필로 정리 | SSO 탐지 위험 없음, 원문 재로그인 감소 | Windows 창 제목과 Chrome History 스키마에 의존; LMS 쿠키가 로컬에 유지됨 |
+| plain (**기본**) | 자동화가 전혀 없는 일반 브라우저를 띄움. Windows는 LMS 화면을 감지해 전용 PID 트리만 세션 보존 종료하고 DPAPI로 저장. Mac은 사용자가 로그인용 창만 닫으면 LMS origin 제한 Playwright 검증 후 Keychain에 저장 | SSO 로그인 중 자동화 탐지 위험 없음, 원문 재로그인 감소 | Windows는 창 제목·History 스키마에 의존. Mac은 완료 뒤 전용 창을 한 번 닫아야 함 |
 | assisted (실험적) | Playwright 가 전용 프로필로 Chrome/Edge 창을 띄우고 완료를 감지 | 창을 닫을 필요 없음 | 학교 SSO가 개발자도구로 감지하므로 기본값으로 사용하지 않음 |
 
-plain 모드가 배포 기본값이다. Chrome의 `Local State`에 있는 현재 Windows 사용자 DPAPI 키로 전용 프로필의
-`MoodleSession*`만 메모리에서 복호화하고 `/my/`를 HTTP로 확인한 뒤, 최소 세션 정보를 다시 DPAPI 파일로 저장한다.
+plain 모드가 배포 기본값이다. Windows는 Chrome의 `Local State`에 있는 현재 사용자 DPAPI 키로 전용 프로필의
+`MoodleSession*`만 메모리에서 복호화하고 `/my/`를 HTTP로 확인한 뒤 최소 세션 정보를 DPAPI 파일에 저장한다. macOS는 로그인용 창이 닫힌 뒤에만 Playwright를 붙이고 LMS origin 이외 요청을 차단한 상태에서 `/my/`를 확인한 뒤 최소 세션 정보를 로그인 Keychain에 저장한다.
 브라우저 프로필이 앱 바운드 암호화 등 지원하지 않는 방식이면 자동화로 우회하지 않고 오류를 반환한다.
 패스키 인증 팝업은 `--disable-popup-blocking`으로 이 전용 프로필에서만 허용한다. 검증 후에는 LMS 쿠키를 제외한 SSO 흔적과 브라우저 사용 기록을 정리한다.
 학교 SSO가 패스키 완료 뒤 원래 LMS 요청 대신 포털 홈으로 복귀시키는 경우에는 동일 전용 프로필로 LMS `/my/`를 다시 열어

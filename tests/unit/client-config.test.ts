@@ -34,16 +34,16 @@ trust_level = "trusted"
 
 describe('npm 한 줄 설치 설정', () => {
   it('npx 캐시 절대 경로 대신 게시된 버전을 고정한다', () => {
-    const server = packageServerDefinition('jbnu-lms-mcp', '0.7.1');
+    const server = packageServerDefinition('jbnu-lms-mcp', '0.8.0');
     expect(server).toEqual({
       command: 'npx',
-      args: ['-y', 'jbnu-lms-mcp@0.7.1', 'serve'],
+      args: ['-y', 'jbnu-lms-mcp@0.8.0', 'serve'],
       env: { JBNU_LMS_LOG_LEVEL: 'warn' },
     });
 
     const snippets = clientConfigSnippets(server);
     expect(snippets.codex).toContain('command = "npx"');
-    expect(snippets.codex).toContain('"jbnu-lms-mcp@0.7.1"');
+    expect(snippets.codex).toContain('"jbnu-lms-mcp@0.8.0"');
     expect(snippets.claude.mcpServers['jbnu-lms']).toEqual(server);
   });
 });

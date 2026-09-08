@@ -36,7 +36,7 @@ moodle-api        moodle-ajax          jbnu-session
 인증:  auth/session-manager.ts ─ auth/browser-login.ts (일반 브라우저)
                               ├─ auth/assisted-login.ts (Playwright 창, 완료 감지)
                               ├─ auth/session-verify.ts (headless 검증·쿠키 추출·토큰 시도)
-                              └─ auth/secret-store.ts   (DPAPI / 평문 / 메모리)
+                              └─ auth/secret-store.ts   (DPAPI / macOS Keychain / 평문 / 메모리)
 ```
 
 학생 신뢰성 기능은 어댑터 결과를 직접 외부 서비스로 보내지 않는다.
@@ -66,7 +66,7 @@ LmsService ─► snapshot.ts ─► attention.ts ─► get_attention_inbox
 3. 사용자가 아이디 로그인 → 2차 인증에서 패스키 완료 → LMS 홈 도착
 4. 1초 간격으로 탭 URL 을 확인. 호스트가 `lms.jbnu.ac.kr` 이고 `M.cfg.userId > 0` 이면 완료
 5. LMS 창 제목 감지 → 전용 PID 트리 세션 보존 종료 → LMS 호스트 쿠키(`MoodleSession*` 등)와 `sesskey`, `userId`, 표시 이름 추출
-6. `SecretStore.save()` → DPAPI 암호화 파일
+6. `SecretStore.save()` → Windows DPAPI 암호화 파일 또는 macOS 로그인 Keychain
 
 ### 3.2 원문 열기 (`open_lms_source`)
 
@@ -74,7 +74,7 @@ LmsService ─► snapshot.ts ─► attention.ts ─► get_attention_inbox
 2. 강좌·공지·과제·자료·달력의 읽기 경로만 허용하고 민감·상태 변경 쿼리를 거부
 3. 검색어와 fragment 등 필요 없는 값을 제거한 URL만 자동화 없는 전용 Chrome/Edge에 전달
 4. 전용 프로필에 LMS 쿠키가 있으면 재사용하고, 없거나 만료됐을 때만 사용자가 공식 SSO에서 인증
-5. 창 종료 후 새 LMS 세션을 DPAPI 저장소에 동기화하고 LMS 이외 쿠키·자격 증명·방문 기록·사이트 저장소·캐시 제거
+5. 창 종료 후 새 LMS 세션을 운영체제 보안 저장소(DPAPI/Keychain)에 동기화하고 LMS 이외 쿠키·자격 증명·방문 기록·사이트 저장소·캐시 제거
 
 plain 모드는 2단계에서 자동화 없는 브라우저를 띄우고, 창이 닫힌 뒤 `verifyBrowserSession` 이 같은 프로필을 headless 로 열어 4~6단계를 수행한다. 이때 `managetoken.php` 와 `launch.php` 로 공식 토큰도 한 번 시도한다.
 
@@ -113,7 +113,7 @@ withAuth ─┬─ getUpcomingDeadlines(7일, 초과 14일)
 
 | 파일 | 내용 | 보호 |
 |---|---|---|
-| `%LOCALAPPDATA%\jbnu-lms-mcp\session.dpapi` | 쿠키, sesskey, 토큰, userId, 표시 이름, 시각 | DPAPI CurrentUser |
+| Windows `%LOCALAPPDATA%\jbnu-lms-mcp\session.dpapi` / Mac 로그인 Keychain | 쿠키, sesskey, 토큰, userId, 표시 이름, 시각 | DPAPI CurrentUser / macOS Keychain generic password |
 | `%LOCALAPPDATA%\jbnu-lms-mcp\browser-profile\` | 로그인·원문 보기용 전용 브라우저 프로필 | Chrome 사용자 암호화 LMS 쿠키만 유지; 자격 증명·방문 기록·SSO 쿠키·사이트 저장소·캐시 제거; 연결 해제 시 선택 삭제 |
 | `%LOCALAPPDATA%\jbnu-lms-mcp\login-pending.json` | 로그인 진행 표식(비밀 없음) | 없음 |
 | `%LOCALAPPDATA%\jbnu-lms-mcp\state\snapshot.json` | 제목·마감·상태 메타데이터 | 없음(개인 PC) |

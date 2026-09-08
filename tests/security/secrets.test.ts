@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DpapiFileStore, PlainFileStore } from '../../src/auth/secret-store.js';
+import { createSecretStore, DpapiFileStore, MacKeychainStore, PlainFileStore, type MacSecurityRunner } from '../../src/auth/secret-store.js';
 import { LmsHttpClient } from '../../src/http/client.js';
 import { Logger, redactText, redactValue } from '../../src/logging.js';
 import { createHarness, type TestHarness } from '../helpers/runtime.js';
@@ -126,6 +126,49 @@ describe('저장소', () => {
     expect(back?.cookies.MoodleSession).toBe(VALID_COOKIE);
     expect(back?.token).toBe(VALID_TOKEN);
     await store.delete();
+  }, 60_000);
+  it('운영체제별 보안 저장소를 선택한다', () => {
+    expect(createSecretStore(path.join(dir, 'windows'), 'win32').backend).toBe('dpapi');
+    expect(createSecretStore(path.join(dir, 'mac'), 'darwin').backend).toBe('keychain');
+    expect(createSecretStore(path.join(dir, 'linux'), 'linux').backend).toBe('plain');
+  });
+  it('Mac Keychain 저장값은 프로세스 인자에 넣지 않는다', async () => {
+    let saved: string | null = null;
+    const calls: Array<{ args: string[]; input?: string }> = [];
+    const runner: MacSecurityRunner = async (args, input) => {
+      calls.push({ args, input });
+      if (args.includes('-i')) {
+        saved = input?.match(/ -w ([A-Za-z0-9+/=]+) -U/)?.[1] ?? null;
+        return { code: saved ? 0 : 1, stdout: '', stderr: '' };
+      }
+      if (args[0] === 'find-generic-password') return saved
+        ? { code: 0, stdout: args.includes('-w') ? `${saved}\n` : '', stderr: '' }
+        : { code: 44, stdout: '', stderr: '' };
+      if (args[0] === 'delete-generic-password') {
+        saved = null;
+        return { code: 0, stdout: '', stderr: '' };
+      }
+      return { code: 1, stdout: '', stderr: '' };
+    };
+    const store = new MacKeychainStore(path.join(dir, 'mac-keychain'), runner);
+    const secret = { cookies: { MoodleSession: VALID_COOKIE }, token: VALID_TOKEN };
+    await store.save(secret);
+    expect(calls.flatMap((call) => call.args).join(' ')).not.toContain(VALID_COOKIE);
+    expect(calls.flatMap((call) => call.args).join(' ')).not.toContain(VALID_TOKEN);
+    expect(await store.load()).toEqual(secret);
+    await store.delete();
+    expect(await store.exists()).toBe(false);
+  });
+  it.runIf(process.platform === 'darwin')('macOS 로그인 Keychain에 저장하고 다시 읽는다', async () => {
+    const store = new MacKeychainStore(path.join(dir, `native-keychain-${process.pid}`));
+    try {
+      await store.save({ cookies: { MoodleSession: VALID_COOKIE }, token: VALID_TOKEN });
+      const back = await store.load<{ cookies: { MoodleSession: string }; token: string }>();
+      expect(back?.cookies.MoodleSession).toBe(VALID_COOKIE);
+      expect(back?.token).toBe(VALID_TOKEN);
+    } finally {
+      await store.delete();
+    }
   }, 60_000);
 });
 

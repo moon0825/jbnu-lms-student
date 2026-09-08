@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const APP_NAME = 'jbnu-lms-mcp';
-export const APP_VERSION = '0.7.1';
+export const APP_VERSION = '0.8.0';
 export const DEFAULT_BASE_URL = 'https://lms.jbnu.ac.kr';
 export const TIMEZONE = 'Asia/Seoul';
 /** 진단용 전북대 LMS 통합인증 중계 경로. 로그인 시작점으로 직접 사용하지 않는다. */

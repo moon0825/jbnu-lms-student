@@ -67,10 +67,16 @@ async function cmdLogin(): Promise<number> {
   const mode = flag('--plain') ? 'plain' : flag('--assisted') ? 'assisted' : rt.loginMode;
   const waitSec = Number.parseInt(opt('--wait') ?? '', 10) || 300;
   out(`전북대 LMS 로그인용 브라우저를 엽니다 (${mode === 'assisted' ? '완료 자동 감지' : '일반 브라우저'} 방식).`);
-  if (mode === 'plain') out('로그인이 끝나 LMS 홈이 보이면 창을 닫지 말고 잠시 기다려 주세요. 세션을 보존해 저장한 뒤 전용 창이 자동으로 닫힙니다.');
+  if (mode === 'plain') {
+    out(process.platform === 'darwin'
+      ? '로그인이 끝나 실제 수강 과목이 보이면 로그인용 Chrome/Edge 창만 닫아 주세요. 그러면 세션을 확인해 Keychain에 저장합니다.'
+      : '로그인이 끝나 LMS 홈이 보이면 창을 닫지 말고 잠시 기다려 주세요. 세션을 보존해 저장한 뒤 전용 창이 자동으로 닫힙니다.');
+  }
   out('중요: 통합로그인의 세 번째 "아이디 로그인" 탭을 선택해 아이디·비밀번호로 1차 인증하세요.');
   out('그 다음 2차 인증 화면에서 "패스키"를 선택해 완료하세요. 두 번째 "패스키 인증 로그인" 탭을 누르는 경로와는 다릅니다.');
-  out('실제 LMS 홈 또는 강좌 화면이 뜨면 그대로 두세요. 연결 저장 뒤 전용 창이 자동으로 닫힙니다. 이 프로그램은 입력한 인증 정보를 읽거나 저장하지 않습니다.');
+  out(process.platform === 'darwin'
+    ? '실제 LMS 홈 또는 강좌 화면이 뜨면 로그인용 창만 닫아 주세요. 일반 Chrome 창은 닫지 않아도 됩니다. 이 프로그램은 입력한 인증 정보를 읽거나 저장하지 않습니다.'
+    : '실제 LMS 홈 또는 강좌 화면이 뜨면 그대로 두세요. 연결 저장 뒤 전용 창이 자동으로 닫힙니다. 이 프로그램은 입력한 인증 정보를 읽거나 저장하지 않습니다.');
   try {
     const st = await rt.sessionManager.loginFlow(mode, waitSec * 1000);
     out();
@@ -192,7 +198,12 @@ async function cmdDoctor(): Promise<number> {
   checks.push(['Node.js 22 이상', nodeOk, process.versions.node]);
   const browser = findBrowser(rt.config.browserPreference);
   checks.push(['Chrome/Edge 브라우저', Boolean(browser), browser ? `${browser.displayName} (${browser.path})` : 'JBNU_LMS_BROWSER 로 경로 지정 가능']);
-  checks.push(['DPAPI 저장소', process.platform === 'win32', process.platform === 'win32' ? rt.config.sessionFile : '이 플랫폼은 평문 파일 저장(경고)']);
+  const secureStore = process.platform === 'win32'
+    ? ['Windows DPAPI', true, rt.config.sessionFile] as const
+    : process.platform === 'darwin'
+      ? ['macOS Keychain', true, '로그인 Keychain · 세션은 명령행 인자에 노출하지 않음'] as const
+      : ['보안 세션 저장소', false, '지원 플랫폼은 Windows와 macOS입니다'] as const;
+  checks.push([...secureStore]);
   try {
     const res = await fetch(`${rt.config.baseUrl}/lib/ajax/service.php?info=tool_mobile_get_public_config`, {
       method: 'POST',

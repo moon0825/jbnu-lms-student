@@ -65,7 +65,7 @@ const MESSAGES: Record<ErrorKind, { title: string; message: string; hint: string
   AUTH_REQUIRED: {
     title: 'LMS 로그인이 필요합니다',
     message: '아직 전북대 LMS에 연결되어 있지 않습니다.',
-    hint: 'connect_lms를 실행하고 통합로그인의 세 번째 "아이디 로그인" 탭에서 1차 로그인한 뒤, 2차 인증에서 패스키를 선택하세요. LMS 홈이 보이면 자동 저장이 끝날 때까지 창을 닫지 마세요.',
+    hint: 'connect_lms를 실행하고 통합로그인의 세 번째 "아이디 로그인" 탭에서 1차 로그인한 뒤, 2차 인증에서 패스키를 선택하세요. LMS 홈이 보이면 화면에 표시된 운영체제별 안내를 따라 세션 저장을 마쳐 주세요.',
     severity: 'warning',
   },
   AUTH_EXPIRED: {
@@ -83,7 +83,7 @@ const MESSAGES: Record<ErrorKind, { title: string; message: string; hint: string
   BROWSER_BUSY: {
     title: '로그인 창을 확인해 주세요',
     message: '로그인용 브라우저 프로필이 사용 중이어서 세션 저장을 마칠 수 없습니다.',
-    hint: '전용 로그인 창에서 LMS 홈까지 이동한 뒤 창을 그대로 두고 get_auth_status를 다시 실행하세요.',
+    hint: '전용 로그인 창에서 LMS 홈까지 이동한 뒤 Windows는 창을 그대로 두고, macOS는 로그인용 창만 닫은 다음 get_auth_status를 다시 실행하세요.',
     severity: 'warning',
   },
   BROWSER_NOT_FOUND: {

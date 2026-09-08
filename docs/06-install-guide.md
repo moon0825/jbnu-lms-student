@@ -1,8 +1,8 @@
-# 설치 및 실행 안내서 (Windows)
+# 설치 및 실행 안내서 (Windows / macOS)
 
 ## 0. 일반 사용자에게 권장하는 설치
 
-Node.js 22 이상을 설치한 뒤 PowerShell에 원하는 명령 한 줄을 붙여넣는다. 별도 폴더, ZIP 압축 해제, 소스 다운로드가 필요 없다.
+Node.js 22 이상을 설치한 뒤 Windows는 PowerShell, macOS는 터미널에 원하는 명령 한 줄을 붙여넣는다. 별도 폴더, ZIP 압축 해제, 소스 다운로드가 필요 없다.
 
 ```powershell
 # Codex
@@ -20,9 +20,9 @@ npx -y jbnu-lms-mcp@latest setup --client claude
 
 | 항목 | 확인 방법 | 비고 |
 |---|---|---|
-| Windows 10/11 | — | DPAPI 로 세션을 암호화한다 |
+| Windows 10/11 또는 macOS | — | Windows는 DPAPI, Mac은 로그인 Keychain에 세션을 저장한다 |
 | Node.js 22 이상 | `node --version` | `npx` 실행에 필요 |
-| Google Chrome 또는 Microsoft Edge | 시작 메뉴 | 로그인 창과 세션 검증에 사용. Edge 는 Windows 11 기본 포함 |
+| Google Chrome 또는 Microsoft Edge | 시작 메뉴 / 응용 프로그램 | 로그인 창과 세션 검증에 사용. Edge 는 Windows 11 기본 포함 |
 | Claude Desktop 또는 Codex | — | MCP 클라이언트 |
 | 전북대 통합인증 계정(패스키 또는 2차 인증) | — | 로그인은 본인이 직접 |
 
@@ -89,9 +89,9 @@ args = ["--disable-warning=ExperimentalWarning", "--experimental-sqlite", "C:\\U
 
 **A. 대화에서 자동**: Claude Desktop 또는 Codex 를 재시작하고 "오늘 해야 할 일 알려줘" 라고 묻는다.
 로그인 창이 열리면 세 번째 `아이디 로그인` 탭에서 아이디·비밀번호로 1차 인증하고, 다음 2차 인증 화면에서
-`패스키`를 선택한다. 두 번째 `패스키 인증 로그인` 탭과 혼동하지 않는다. 실제 수강 과목이 보이는 LMS 화면에 도착하면 창을 닫지 않고 기다린다.
-도구가 세션을 보존해 저장한 뒤 전용 Chrome 창을 자동으로 닫는다.
-세션 검증 뒤 LMS 세션은 DPAPI로 암호화 저장된다. 전용 브라우저에는 원문 보기 재사용을 위해 Chrome이 암호화한 LMS 쿠키만 남고, 비밀번호·자동완성·방문 기록·SSO 쿠키·사이트 저장소·캐시는 정리된다. 프로필 유지가 싫으면 `JBNU_LMS_RETAIN_BROWSER_PROFILE=0`을 설정한다.
+`패스키`를 선택한다. 두 번째 `패스키 인증 로그인` 탭과 혼동하지 않는다. 실제 수강 과목이 보이는 LMS 화면에 도착하면 Windows는 창을 그대로 두고, Mac은 방금 열린 로그인용 Chrome/Edge 창만 닫는다.
+Windows는 도구가 전용 창을 자동 종료하고 DPAPI에 저장한다. Mac은 창이 닫힌 뒤 LMS 범위로 제한된 검증을 거쳐 로그인 Keychain에 저장한다.
+전용 브라우저에는 원문 보기 재사용을 위해 Chrome이 암호화한 LMS 쿠키만 남고, 비밀번호·자동완성·방문 기록·SSO 쿠키·사이트 저장소·캐시는 정리된다. 프로필 유지가 싫으면 `JBNU_LMS_RETAIN_BROWSER_PROFILE=0`을 설정한다.
 
 **B. 명령행에서 미리**:
 
@@ -111,7 +111,7 @@ node dist\cli.js status --verify
 node dist\cli.js verify
 ```
 
-`✅ 연결됨` 과 이름이 보이면 끝. 세션은 `%LOCALAPPDATA%\jbnu-lms-mcp\session.dpapi` 에 암호화되어 저장된다.
+`✅ 연결됨` 과 이름이 보이면 끝. 세션은 Windows에서 `%LOCALAPPDATA%\jbnu-lms-mcp\session.dpapi`, Mac에서 로그인 Keychain에 안전하게 저장된다.
 
 ## 5. 문제 신고·기능 제안 수집 설정(선택)
 

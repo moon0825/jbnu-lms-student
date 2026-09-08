@@ -169,7 +169,7 @@ export interface AuthStatus {
   connectedAt: string | null;
   lastVerifiedAt: string | null;
   lastSyncAt: string | null;
-  storageBackend: 'dpapi' | 'plain' | 'memory';
+  storageBackend: 'dpapi' | 'keychain' | 'plain' | 'memory';
   storageLocation: string;
   profileDir: string;
   browser: string | null;

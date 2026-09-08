@@ -5,7 +5,7 @@
 ## 1. 목표
 
 전북대학교 LMS(JBNU LXP, Moodle 4.5 + Coursemos)에 로그인한 학생이 AI 클라이언트(Claude Desktop, Codex 등)에서 자연어로
-공지·과제·마감·수업자료를 조회하고 "오늘/이번 주 해야 할 일"을 정리받을 수 있는 **Windows 로컬 STDIO MCP 서버**를 만든다.
+공지·과제·마감·수업자료를 조회하고 "오늘/이번 주 해야 할 일"을 정리받을 수 있는 **Windows/macOS 로컬 STDIO MCP 서버**를 만든다.
 학생 개인정보와 학습자료 보호를 위해 모든 처리는 사용자 PC 안에서 끝나야 한다.
 
 ## 2. 이해관계자와 페르소나
@@ -61,13 +61,13 @@
 
 | ID | 요구사항 | 구현 |
 |---|---|---|
-| NFR-01 보안 | 비밀번호·패스키·OTP 를 받지 않음. 쿠키·토큰을 코드·Git·로그·응답에 노출하지 않음 | 브라우저 직접 로그인, DPAPI 저장, 로그 마스킹, 보안 테스트, check-secrets |
+| NFR-01 보안 | 비밀번호·패스키·OTP 를 받지 않음. 쿠키·토큰을 코드·Git·로그·응답에 노출하지 않음 | 브라우저 직접 로그인, DPAPI/Keychain 저장, 로그 마스킹, 보안 테스트, check-secrets |
 | NFR-02 최소 권한 | 학생 본인이 LMS 에서 볼 수 있는 것만 읽기 | 세션 재사용, 읽기 전용 도구 |
 | NFR-03 UX | 모든 메시지 한국어, 오류에 영향·자동 복구·다음 행동·진단 ID, 부분 실패와 정상 빈 결과 구분, 상태·동기화·출처 표시 | `errors.ts`, `tools/format.ts`, `docs/11-error-ux.md` |
 | NFR-04 안정성 | 타임아웃 20초, 재시도 2회(지수 백오프와 `Retry-After`, 자동 대기 최대 10초), 동시 3건, 요청 간격 250ms | `http/client.ts` |
 | NFR-05 견고성 | HTML 구조 변화에 대비해 파서 격리, 다중 선택자, fixture 테스트 | `parsers/`, `tests/fixtures` |
 | NFR-06 정책 준수 | SSO 자동화 금지, 과도한 요청 금지, 학교 약관 존중 | ADR-001, 속도 제한 |
-| NFR-07 이식성 | Windows 우선. 다른 OS 는 평문 저장 경고와 함께 동작 | `secret-store.ts` |
+| NFR-07 이식성 | Windows 10/11과 macOS를 지원. Linux는 공개 패키지 설치 대상에서 제외 | `secret-store.ts`, CI OS 매트릭스 |
 | NFR-08 테스트 | 저장소 테스트 데이터는 익명화 fixture·mock 서버만 사용하고, opt-in 실환경 검증은 개수·성공 여부만 출력 | `tests/helpers/mock-lms.ts`, `tests/live/` |
 | NFR-09 피드백 개인정보 | 피드백은 명시적 승인 후에만 접수하고 인증정보·학번·연락처·JBNU URL·로컬 사용자 경로를 제거한다. 외부 전송은 HTTPS와 리다이렉트 거부를 적용한다 | `feedback-service.ts`, `docs/14-feedback-collection.md` |
 | NFR-10 피드백 내구성 | 원격 전송 전에 로컬 원자 저장, 접수 번호 기반 멱등 전송, 장애 시 재시도 대기, 로컬 삭제권 제공 | `feedback-service.ts` |

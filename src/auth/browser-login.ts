@@ -35,7 +35,9 @@ function candidates(env: NodeJS.ProcessEnv): Array<BrowserInfo> {
   } else if (process.platform === 'darwin') {
     list.push(
       { name: 'chrome', displayName: 'Google Chrome', path: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' },
+      { name: 'chrome', displayName: 'Google Chrome', path: path.join(os.homedir(), 'Applications', 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome') },
       { name: 'msedge', displayName: 'Microsoft Edge', path: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge' },
+      { name: 'msedge', displayName: 'Microsoft Edge', path: path.join(os.homedir(), 'Applications', 'Microsoft Edge.app', 'Contents', 'MacOS', 'Microsoft Edge') },
     );
   } else {
     list.push(

@@ -2,7 +2,7 @@
 
 - 대상: `jbnu-lms-mcp` — 전북대학교 LMS(JBNU LXP, Moodle 4.5 + Coursemos/ubion) 학생용 **읽기 전용** MCP 서버
 - 실행 환경: Windows 11 · Node 22 · TypeScript · Claude Desktop / Codex STDIO
-- 현재 버전: **v0.7.1** · 최신 커밋은 현재 `main` 브랜치 참조
+- 현재 버전: **v0.8.0** · 최신 커밋은 현재 `main` 브랜치 참조
 - 상태: 빌드·타입체크 OK, **테스트 99개 통과**, 비밀값 스캔 통과, **실제 LMS 연결·조회 검증 완료**
 - 작성 시점: 2026-09-04
 

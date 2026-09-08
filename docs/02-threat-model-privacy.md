@@ -4,7 +4,7 @@
 
 | 자산 | 민감도 | 위치 |
 |---|---|---|
-| LMS 세션 쿠키(`MoodleSession*`), `sesskey`, (있다면) 웹서비스 토큰 | 매우 높음 — 탈취 시 학생 계정으로 LMS 전체 열람 가능 | `%LOCALAPPDATA%\jbnu-lms-mcp\session.dpapi` (DPAPI 암호화) |
+| LMS 세션 쿠키(`MoodleSession*`), `sesskey`, (있다면) 웹서비스 토큰 | 매우 높음 — 탈취 시 학생 계정으로 LMS 전체 열람 가능 | Windows DPAPI 암호화 파일 / macOS 로그인 Keychain |
 | 로그인·원문 보기용 전용 브라우저 프로필(LMS 쿠키) | 매우 높음 | `%LOCALAPPDATA%\jbnu-lms-mcp\browser-profile\`; 성공 후 LMS 쿠키만 유지하고 자격 증명·방문 기록·SSO 쿠키·사이트 저장소·캐시 제거 |
 | 강좌·과제·공지 메타데이터 스냅샷 | 중간 — 개인 학습 정보 | `%LOCALAPPDATA%\jbnu-lms-mcp\state\snapshot.json` (평문 JSON, 제목·마감만) |
 | 다운로드한 수업자료 | 중간~높음 — 저작물 | `~/Downloads/jbnu-lms/` |
@@ -18,7 +18,7 @@
    │                                                   ▲
    │ MCP 클라이언트(Claude Desktop/Codex) ── STDIO ──▶ jbnu-lms-mcp ──HTTP(쿠키)──┘
    │                                                   │
-   └── 로컬 디스크(DPAPI 파일, 정리된 LMS 전용 프로필, 스냅샷) ◀┘
+   └── 로컬 보안 저장소(DPAPI/Keychain), 정리된 LMS 전용 프로필, 스냅샷 ◀┘
 ```
 
 - MCP 서버는 로컬 STDIO 로만 동작하며 네트워크 포트를 열지 않는다.
@@ -30,7 +30,7 @@
 
 | # | 위협 | 통제 | 잔여 위험 |
 |---|---|---|---|
-| T1 | 세션 파일 탈취(다른 사용자·악성코드) | DPAPI CurrentUser 범위 암호화(같은 Windows 계정에서만 복호화), 파일 권한 0600 시도 | 같은 계정에서 실행되는 악성코드는 복호화 가능 |
+| T1 | 세션 저장소 탈취(다른 사용자·악성코드) | Windows DPAPI CurrentUser 범위 또는 macOS 로그인 Keychain. Mac 저장 시 비밀값은 프로세스 인자가 아닌 stdin으로 전달 | 같은 OS 사용자 계정에서 실행되는 악성코드는 보안 저장소 접근을 시도할 수 있음 |
 | T2 | 로그·응답을 통한 유출 | 로거가 쿠키·토큰·sesskey·32자 hex·비밀번호 패턴을 마스킹, 본문(description/body) 필드 차단, stdout 은 MCP 채널 전용 | 새 패턴 누락 가능 → `tests/security` 로 회귀 방지 |
 | T3 | AI 대화에 비밀값 노출 | 도구 응답에 자격 증명을 넣지 않음. `get_auth_status` 는 저장 위치·방식만 표시 | 없음(테스트로 확인) |
 | T4 | 피싱성 외부 링크로 쿠키 전송 | HTTP 호스트 고정, 외부 리다이렉트 중단, `open_lms_source` 동일 origin·읽기 경로 허용목록, 민감·상태 변경 쿼리 차단 | LMS 자체 읽기 페이지의 콘텐츠 위험은 남음 |
@@ -40,7 +40,7 @@
 | T8 | 반복 다운로드로 중복·변조 혼동 | SHA-256 동일 파일 재사용, 다른 내용은 별도 버전으로 보존 | 서버가 동일 URL에 잘못된 콘텐츠를 주는 경우 원문 확인 필요 |
 | T6 | 과도한 요청으로 인한 LMS 부하·차단 | 동시 3건, 요청 간 250ms, 지수 백오프 재시도 2회, 60초~5분 캐시 | 대량 강좌 조회 시 시간이 걸릴 뿐 |
 | T7 | Git 에 비밀값 커밋 | `.gitignore`(dpapi, profile, session), `scripts/check-secrets.mjs`, 보안 테스트 | 개발자가 강제로 추가하는 경우 |
-| T8 | 원문 보기 프로필에 비밀번호·SSO 흔적 저장 | 비밀번호 관리자·자동완성·동기화 비활성, 자격 증명 DB·방문 기록·SSO 이외 쿠키·사이트 저장소·캐시 제거, marker가 있는 고정 경로만 정리·삭제 | 같은 Windows 계정의 악성코드는 LMS 쿠키에 접근할 수 있음 |
+| T8 | 원문 보기 프로필에 비밀번호·SSO 흔적 저장 | 비밀번호 관리자·자동완성·동기화 비활성, 자격 증명 DB·방문 기록·SSO 이외 쿠키·사이트 저장소·캐시 제거, marker가 있는 고정 경로만 정리·삭제 | 같은 OS 사용자 계정의 악성코드는 LMS 쿠키에 접근할 수 있음 |
 | T9 | keep-alive 로 세션이 장시간 유지 | `JBNU_LMS_KEEPALIVE=0` 으로 끌 수 있음, 서버 종료 시 중단 | PC 잠금 없이 자리 비움 |
 | T10 | assisted 로그인 창이 SSO 에 노출 | SSO 페이지 내용은 읽지 않음, URL 호스트만 확인 | 학교 정책상 자동화 브라우저 사용을 제한할 수 있음 → plain 모드 제공 |
 | T11 | LMS 상태 변경(과제 제출·게시·출석) 오작동 | LMS 상태 변경 기능이 코드에 없음 | 없음 |

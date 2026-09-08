@@ -35,7 +35,7 @@
 - [ ] LMS 도구가 조회 전용인지 확인 (LMS POST 는 AJAX 조회와 REST 조회뿐)
 - [ ] LMS 인증 요청의 호스트 고정이 유지되고 피드백 전송은 사용자 승인 + 설정된 HTTPS 수집기로만 분리되는지 확인
 
-## 설치 경험 (새 Windows 사용자 관점)
+## 설치 경험 (새 Windows/macOS 사용자 관점)
 
 - [ ] README 만 보고 `install.ps1 -RegisterClaude` 로 설치 → Claude 재시작 → 첫 질문에서 로그인 창이 뜨는지 확인
 - [ ] `node dist\cli.js doctor` 가 모두 ✅

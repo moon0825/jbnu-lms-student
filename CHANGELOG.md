@@ -1,5 +1,12 @@
 # 변경 기록
 
+## 0.8.0 — 2026-09-08
+
+- npm 설치 대상에 macOS를 추가하고 Chrome·Edge 경로와 한 줄 설치 흐름을 지원
+- Mac 로그인은 자동화 없는 전용 브라우저에서 패스키를 완료한 뒤 해당 창만 닫으면 LMS origin 제한 검증으로 세션을 확정
+- Mac 세션은 평문 파일 대신 로그인 Keychain에 저장하며 비밀값을 프로세스 명령행에 넣지 않음
+- Windows와 macOS GitHub Actions 매트릭스로 빌드·테스트·비밀정보 검사·패키지 생성을 검증
+
 ## 0.7.1 — 2026-09-07
 
 - `npx -y jbnu-lms-mcp@latest setup --client codex|claude` 한 줄 설치 추가

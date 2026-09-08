@@ -118,6 +118,10 @@ const feedbackInputSchema = {
 export function registerTools(server: McpServer, deps: ToolDeps): void {
   const { service, sessionManager, logger } = deps;
   const status = (): Promise<AuthStatus> => sessionManager.getStatus();
+  const mac = process.platform === 'darwin';
+  const completionGuide = mac
+    ? '실제 수강 과목이 보이는 LMS 화면에 도착하면 로그인용 Chrome/Edge 창만 닫아 주세요. 세션 확인 뒤 macOS Keychain에 저장됩니다.'
+    : '실제 수강 과목이 보이는 LMS 화면에 도착하면 창을 닫지 말고 기다려 주세요. 저장 뒤 전용 창이 자동으로 닫힙니다.';
 
   const run = async (tool: string, fn: () => Promise<ToolResult>): Promise<ToolResult> => {
     try {
@@ -136,7 +140,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
       description:
         '전북대 LMS 로그인용 일반 브라우저(자동화 없음)를 LMS /my/에서 엽니다. 사용자는 통합로그인의 세 번째 "아이디 로그인" 탭에서 1차 로그인한 뒤 2차 인증으로 패스키를 선택합니다. ' +
-        'LMS 홈을 감지하면 전용 Chrome만 세션 보존 종료하고, LMS 세션을 DPAPI로 저장한 뒤 LMS 쿠키만 남긴 원문 보기용 프로필로 정리합니다. 사용자가 창을 직접 닫으면 안 됩니다. 아이디·비밀번호·패스키를 이 도구에 넣지 마세요. ' +
+        (mac
+          ? 'macOS에서는 LMS 홈 도착 후 사용자가 로그인용 창만 닫으면 세션을 검증해 Keychain에 저장합니다. '
+          : 'Windows에서는 LMS 홈을 감지하면 전용 Chrome만 세션 보존 종료하고, LMS 세션을 DPAPI로 저장합니다. ') +
+        '아이디·비밀번호·패스키를 이 도구에 넣지 마세요. ' +
         'wait_seconds 동안 완료를 기다리며, 0 이면 창만 열고 바로 돌아옵니다(이후 get_auth_status 를 호출하면 자동으로 마무리).',
       inputSchema: {
         wait_seconds: z.number().int().min(0).max(600).optional().describe('LMS 화면 감지와 세션 저장을 기다리는 시간(초). 기본 120'),
@@ -149,7 +156,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const guide = [
           '1. 통합로그인의 세 번째 "아이디 로그인" 탭을 선택해 아이디·비밀번호로 1차 인증해 주세요.',
           '2. 다음 2차 인증 화면에서 "패스키"를 선택해 완료해 주세요.',
-          '3. 실제 수강 과목이 보이는 LMS 화면에 도착하면 창을 닫지 말고 기다려 주세요. 저장 뒤 전용 창이 자동으로 닫힙니다.',
+          `3. ${completionGuide}`,
           '',
           '주의: 두 번째 "패스키 인증 로그인" 탭의 비밀번호 없는 단독 로그인과는 다른 경로입니다.',
           '이 도구는 아이디·비밀번호·패스키를 읽거나 저장하지 않으며, 로그인 화면에 어떤 자동화도 연결하지 않습니다.',
@@ -157,13 +164,15 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         if (wait === 0) {
           const start = await sessionManager.startLogin();
           const text = start.profileLocked
-            ? '이미 로그인용 브라우저 창이 열려 있습니다. LMS 홈이 보이면 창을 닫지 말고 get_auth_status 를 실행해 주세요.'
+            ? mac
+              ? '이미 로그인용 브라우저 창이 열려 있습니다. LMS 홈에 수강 과목이 보이면 이 전용 창만 닫은 뒤 get_auth_status 를 실행해 주세요.'
+              : '이미 로그인용 브라우저 창이 열려 있습니다. LMS 홈이 보이면 창을 닫지 말고 get_auth_status 를 실행해 주세요.'
             : [`🔐 ${start.browser} 창을 열었습니다.`, '', ...guide, '', 'LMS 홈이 보인 상태에서 get_auth_status 를 호출해도 연결을 마무리할 수 있습니다.'].join('\n');
           return ok(text, { pending: true, browser: start.browser, mode });
         }
         const st = await sessionManager.loginFlow(mode, wait);
         if (st.connected) return ok(`✅ LMS 연결 완료\n\n${fmtStatus(st)}`, { status: st });
-        return ok([`⏳ 아직 연결되지 않았습니다.`, '', ...guide, '', fmtStatus(st), '', 'LMS 홈이 보인다면 창을 닫지 말고 get_auth_status 를 실행해 주세요.'].join('\n'), { status: st });
+        return ok([`⏳ 아직 연결되지 않았습니다.`, '', ...guide, '', fmtStatus(st), '', mac ? 'LMS 홈에 수강 과목이 보이면 로그인용 창만 닫은 뒤 get_auth_status 를 실행해 주세요.' : 'LMS 홈이 보인다면 창을 닫지 말고 get_auth_status 를 실행해 주세요.'].join('\n'), { status: st });
       }),
   );
 

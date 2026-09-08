@@ -189,7 +189,8 @@ export class SessionManager {
     if (!verified.loggedIn) {
       return this.buildStatus(await this.load(true), { pending: Boolean(await this.readPending()), extraWarning: `브라우저 프로필에서 로그인 상태를 확인하지 못했습니다 (${verified.reason}).` });
     }
-    return this.saveVerified(verified);
+    const status = await this.saveVerified(verified);
+    return this.config.retainBrowserProfile ? this.finishReusableProfile(status) : this.finishDisposableProfile(status);
   }
 
   /** 전용 프로필 쿠키를 복호화해 HTTP 로 검증하고 저장한다. 로그인 상태가 아니면 null. */
@@ -304,7 +305,11 @@ export class SessionManager {
       const released = await waitForProfileRelease(this.config.profileDir, 15_000, 250);
       if (!released) return;
       try {
-        await this.completeFromCookies();
+        if (process.platform === 'win32') await this.completeFromCookies();
+        else {
+          await this.completeLogin();
+          return;
+        }
       } catch (e) {
         this.logger.debug('원문 브라우저 종료 후 세션 갱신 생략', { kind: toLmsError(e).kind });
       }
@@ -335,7 +340,12 @@ export class SessionManager {
     if (process.platform !== 'win32' || !this.httpVerifier) {
       const released = await waitForProfileRelease(this.config.profileDir, timeoutMs);
       if (!released) {
-        return this.buildStatus(await this.load(), { pending: true, extraWarning: '아직 로그인 브라우저 창이 열려 있습니다. LMS 홈이 보이면 창을 닫지 말고 잠시 기다려 주세요.' });
+        return this.buildStatus(await this.load(), {
+          pending: true,
+          extraWarning: process.platform === 'darwin'
+            ? '아직 로그인용 브라우저 창이 열려 있습니다. 실제 수강 과목이 보이면 이 전용 창만 닫아 주세요. 닫힌 뒤 세션을 검증해 Keychain에 저장합니다.'
+            : '아직 로그인 브라우저 창이 열려 있습니다. 인증을 완료한 뒤 창을 닫아 주세요.',
+        });
       }
       return this.completeLogin();
     }
@@ -467,13 +477,17 @@ export class SessionManager {
 
   buildStatus(session: StoredSession | null, opts: { pending: boolean; extraWarning?: string }): AuthStatus {
     const warnings: string[] = [];
-    if (this.store.backend === 'plain') warnings.push('이 플랫폼에서는 DPAPI 를 쓸 수 없어 세션이 사용자 전용 권한의 파일에 평문으로 저장됩니다.');
+    if (this.store.backend === 'plain') warnings.push('이 플랫폼에는 지원되는 보안 저장소가 없어 세션이 사용자 전용 권한의 파일에 평문으로 저장됩니다.');
     if (opts.extraWarning) warnings.push(opts.extraWarning);
     const connected = Boolean(session) && !this.expiredHint;
     if (session && this.expiredHint) warnings.push('저장된 세션이 만료된 것으로 보입니다. connect_lms 로 다시 로그인해 주세요.');
     const mode: AuthStatus['mode'] = !session ? 'none' : session.token && session.cookies ? 'session+token' : session.token ? 'token' : 'session';
     let message: string;
-    if (opts.pending && !connected) message = '로그인 브라우저가 열려 있습니다. 통합인증을 완료한 뒤 LMS 홈이 보이면 창을 닫지 말고 기다리거나 get_auth_status 를 실행해 주세요.';
+    if (opts.pending && !connected) {
+      message = process.platform === 'darwin'
+        ? '로그인용 브라우저가 열려 있습니다. 실제 수강 과목이 보이면 이 전용 창만 닫아 주세요. 자동으로 세션을 확인해 Keychain에 저장합니다.'
+        : '로그인 브라우저가 열려 있습니다. 통합인증을 완료한 뒤 LMS 홈이 보이면 창을 닫지 말고 기다리거나 get_auth_status 를 실행해 주세요.';
+    }
     else if (!session) message = '연결되지 않았습니다. connect_lms 를 실행해 로그인해 주세요.';
     else if (!connected) message = '세션이 만료되었습니다. connect_lms 로 다시 로그인해 주세요.';
     else message = `연결됨 (${session.displayName ?? '사용자'}) · 마지막 확인 ${formatKo(fromIso(session.lastVerifiedAt))}`;
