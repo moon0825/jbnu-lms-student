@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findBrowser } from './auth/browser-login.js';
+import { clientConfigSnippets, localServerDefinition, packageServerDefinition, upsertCodexMcpServer, type ClientName } from './client-config.js';
 import { APP_NAME, APP_VERSION } from './config.js';
 import { formatUserError, toLmsError } from './errors.js';
 import { buildRuntime, serveStdio } from './server.js';
@@ -39,13 +40,12 @@ function distEntry(): string {
   return path.join(root, 'dist', 'cli.js');
 }
 
-function configSnippets(): { claude: Record<string, unknown>; codex: string; json: Record<string, unknown> } {
+function configSnippets(runtime: 'local' | 'package' = 'local'): { claude: Record<string, unknown>; codex: string; json: Record<string, unknown> } {
   const entry = distEntry();
-  // --experimental-sqlite: 로그인 후 브라우저 프로필 쿠키를 읽어 세션을 복구하는 데 필요 (Node 22).
-  const nodeArgs = ['--disable-warning=ExperimentalWarning', '--experimental-sqlite', entry, 'serve'];
-  const serverDef = { command: 'node', args: nodeArgs, env: { JBNU_LMS_LOG_LEVEL: 'warn' } };
-  const claude = { mcpServers: { 'jbnu-lms': serverDef } };
-  const codex = ['[mcp_servers.jbnu-lms]', 'command = "node"', `args = ["--disable-warning=ExperimentalWarning", "--experimental-sqlite", ${JSON.stringify(entry)}, "serve"]`, '', '[mcp_servers.jbnu-lms.env]', 'JBNU_LMS_LOG_LEVEL = "warn"'].join('\n');
+  const serverDef = runtime === 'package'
+    ? packageServerDefinition(APP_NAME, APP_VERSION)
+    : localServerDefinition(entry);
+  const { claude, codex } = clientConfigSnippets(serverDef);
   return { claude, codex, json: claude };
 }
 
@@ -220,41 +220,80 @@ async function cmdDoctor(): Promise<number> {
   return checks.some(([, v]) => v === false) ? 1 : 0;
 }
 
+function isClientName(value: string): value is ClientName {
+  return value === 'claude' || value === 'codex';
+}
+
+async function writeClientConfig(client: ClientName, runtime: 'local' | 'package'): Promise<void> {
+  const s = configSnippets(runtime);
+  if (client === 'codex') {
+    const file = path.join(os.homedir(), '.codex', 'config.toml');
+    const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (existing) fs.copyFileSync(file, `${file}.bak-${Date.now()}`);
+    fs.writeFileSync(file, upsertCodexMcpServer(existing, 'jbnu-lms', s.codex), 'utf8');
+    out(`✅ Codex 연결 설정 완료${existing ? ' (기존 설정 백업)' : ''}`);
+    return;
+  }
+
+  const file = process.platform === 'win32' ? path.join(process.env.APPDATA ?? '', 'Claude', 'claude_desktop_config.json') : path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  const existed = fs.existsSync(file);
+  let json: Record<string, unknown> = {};
+  if (existed) {
+    json = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+    fs.copyFileSync(file, `${file}.bak-${Date.now()}`);
+  }
+  const servers = (json.mcpServers as Record<string, unknown> | undefined) ?? {};
+  servers['jbnu-lms'] = (s.claude.mcpServers as Record<string, unknown>)['jbnu-lms'];
+  json.mcpServers = servers;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(json, null, 2), 'utf8');
+  out(`✅ Claude Desktop 연결 설정 완료${existed ? ' (기존 설정 백업)' : ''}`);
+}
+
 async function cmdConfig(): Promise<number> {
   const client = opt('--client') ?? 'claude';
-  const s = configSnippets();
-  if (client === 'codex') {
-    out(s.codex);
-    if (flag('--write')) {
-      const file = path.join(os.homedir(), '.codex', 'config.toml');
-      const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-      if (/\[mcp_servers\.jbnu-lms\]/.test(existing)) {
-        out(`\n이미 ${file} 에 jbnu-lms 항목이 있습니다. 수동으로 확인해 주세요.`);
-        return 0;
-      }
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      if (existing) fs.copyFileSync(file, `${file}.bak-${Date.now()}`);
-      fs.writeFileSync(file, `${existing.trimEnd()}\n\n${s.codex}\n`, 'utf8');
-      out(`\n${file} 에 추가했습니다 (백업 생성). Codex 를 재시작하세요.`);
-    }
+  if (!isClientName(client)) {
+    out('지원하는 클라이언트는 codex 또는 claude 입니다.');
+    return 1;
+  }
+  const runtime = flag('--package') ? 'package' : 'local';
+  const s = configSnippets(runtime);
+  out(client === 'codex' ? s.codex : JSON.stringify(s.claude, null, 2));
+  if (flag('--write')) await writeClientConfig(client, runtime);
+  return 0;
+}
+
+async function cmdSetup(): Promise<number> {
+  const client = opt('--client') ?? 'codex';
+  if (!isClientName(client)) {
+    out('설치 대상은 codex 또는 claude 중 하나를 선택해 주세요.');
+    out(`예: npx -y ${APP_NAME}@latest setup --client codex`);
+    return 1;
+  }
+
+  out(`\n🎓 전북대 LMS 학업비서 ${APP_VERSION}`);
+  out('폴더 설치 없이 이 PC의 MCP 설정을 안전하게 연결합니다.');
+  out('기존 설정 파일이 있으면 먼저 백업합니다.\n');
+
+  const doctor = await cmdDoctor();
+  if (doctor !== 0) {
+    out('\n환경 점검을 먼저 해결한 뒤 같은 명령을 다시 실행해 주세요.');
+    return doctor;
+  }
+
+  await writeClientConfig(client, 'package');
+  if (flag('--skip-login')) {
+    out(`\n설정이 끝났습니다. ${client === 'codex' ? 'Codex' : 'Claude Desktop'}를 완전히 종료한 뒤 다시 실행하세요.`);
     return 0;
   }
-  out(JSON.stringify(s.claude, null, 2));
-  if (flag('--write')) {
-    const file = process.platform === 'win32' ? path.join(process.env.APPDATA ?? '', 'Claude', 'claude_desktop_config.json') : path.join(os.homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-    let json: Record<string, unknown> = {};
-    if (fs.existsSync(file)) {
-      json = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
-      fs.copyFileSync(file, `${file}.bak-${Date.now()}`);
-    }
-    const servers = (json.mcpServers as Record<string, unknown> | undefined) ?? {};
-    servers['jbnu-lms'] = (s.claude.mcpServers as Record<string, unknown>)['jbnu-lms'];
-    json.mcpServers = servers;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(json, null, 2), 'utf8');
-    out(`\n${file} 에 jbnu-lms 서버를 등록했습니다 (백업 생성). Claude Desktop 을 완전히 종료 후 다시 실행하세요.`);
+
+  out('\n이제 로그인 창이 열립니다. 비밀번호·패스키·2차 인증은 브라우저에서 직접 완료하세요.');
+  const login = await cmdLogin();
+  if (login === 0) {
+    out(`\n✅ 설치와 로그인이 끝났습니다. ${client === 'codex' ? 'Codex' : 'Claude Desktop'}를 완전히 종료한 뒤 다시 실행하세요.`);
   }
-  return 0;
+  return login;
 }
 
 async function main(): Promise<void> {
@@ -265,11 +304,14 @@ async function main(): Promise<void> {
     return;
   }
   if (cmd === 'help' || flag('--help')) {
-    out(`${APP_NAME} ${APP_VERSION}\n\n사용법:\n  jbnu-lms-mcp serve                     MCP STDIO 서버 실행 (기본)\n  jbnu-lms-mcp login [--plain] [--wait N]  브라우저로 LMS 로그인\n  jbnu-lms-mcp status [--verify]           연결 상태\n  jbnu-lms-mcp verify                      로그인한 브라우저 프로필에서 세션만 검증·저장\n  jbnu-lms-mcp brief [--weekly] [--days N] [--json] [--quiet-if-empty] [--out F]  예약용 브리핑(로그인 창 안 뜸)\n  jbnu-lms-mcp logout [--delete-profile]   연결 해제\n  jbnu-lms-mcp doctor                      환경 점검\n  jbnu-lms-mcp config [--client claude|codex] [--write]  MCP 클라이언트 설정`);
+    out(`${APP_NAME} ${APP_VERSION}\n\n사용법:\n  jbnu-lms-mcp setup --client codex|claude  한 번에 연결하고 로그인\n  jbnu-lms-mcp serve                     MCP STDIO 서버 실행 (기본)\n  jbnu-lms-mcp login [--plain] [--wait N]  브라우저로 LMS 로그인\n  jbnu-lms-mcp status [--verify]           연결 상태\n  jbnu-lms-mcp verify                      로그인한 브라우저 프로필에서 세션만 검증·저장\n  jbnu-lms-mcp brief [--weekly] [--days N] [--json] [--quiet-if-empty] [--out F]  예약용 브리핑(로그인 창 안 뜸)\n  jbnu-lms-mcp logout [--delete-profile]   연결 해제\n  jbnu-lms-mcp doctor                      환경 점검\n  jbnu-lms-mcp config [--client claude|codex] [--write] [--package]  MCP 클라이언트 설정`);
     return;
   }
   let code = 0;
   switch (cmd) {
+    case 'setup':
+      code = await cmdSetup();
+      break;
     case 'serve':
       await serveStdio();
       return;

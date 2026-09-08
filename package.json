@@ -1,11 +1,20 @@
 {
   "name": "jbnu-lms-mcp",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "전북대학교 LMS 학생용 조회·학업지원·피드백 MCP 서버 (Windows 로컬 STDIO)",
   "type": "module",
   "private": false,
   "license": "MIT",
   "author": "JBNU LMS MCP Contributors",
+  "homepage": "https://github.com/moon0825/jbnu-lms-student#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moon0825/jbnu-lms-student.git"
+  },
+  "bugs": {
+    "url": "https://github.com/moon0825/jbnu-lms-student/issues"
+  },
+  "mcpName": "io.github.moon0825/jbnu-lms-student",
   "keywords": [
     "mcp",
     "moodle",
@@ -22,6 +31,7 @@
     "skills/",
     ".codex-plugin/",
     ".mcp.json",
+    "server.json",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

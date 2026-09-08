@@ -6,10 +6,12 @@
 
 | 증상 | 원인 | 해결 |
 |---|---|---|
-| `install.ps1` 이 "스크립트를 실행할 수 없습니다" | PowerShell 실행 정책 | `powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -RegisterClaude` |
+| 설치할 폴더가 없거나 경로를 모르겠음 | 예전 소스 설치 안내 사용 | 폴더 없이 `npx -y jbnu-lms-mcp@latest setup --client codex` 또는 `--client claude` 실행 |
+| `npx`를 찾을 수 없음 | Node.js 22 미설치 | Node.js LTS 설치 후 새 PowerShell 창에서 같은 한 줄 명령 재실행 |
+| `install.ps1` 이 "스크립트를 실행할 수 없습니다" | 개발자용 소스 설치를 선택함 | 일반 사용자는 npx 한 줄 설치 사용. 개발자는 `powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -RegisterClaude` |
 | `Node.js 22 이상이 필요합니다` | 오래된 Node | https://nodejs.org LTS 설치 후 새 PowerShell 창에서 재실행 |
 | `npm ci` 가 esbuild 설치에서 실패 | 경로가 너무 길거나 OneDrive 동기화 폴더 | 짧은 로컬 경로(예: `C:\Users\<이름>\Documents\jbnu-lms-mcp`)로 옮겨 재시도 |
-| Claude Desktop 에 도구가 안 보임 | 설정 파일 미반영·앱 미재시작 | `node dist\cli.js config --client claude --write` 후 Claude 완전 종료(트레이) → 재실행. `%APPDATA%\Claude\claude_desktop_config.json` 에 `jbnu-lms` 항목 확인 |
+| Claude Desktop 에 도구가 안 보임 | 설정 파일 미반영·앱 미재시작 | `npx -y jbnu-lms-mcp@latest setup --client claude --skip-login` 후 Claude 완전 종료(트레이) → 재실행 |
 | Claude 로그에 "server disconnected" | `dist/` 가 없거나 경로 오타 | `npm run build` 후 설정 파일의 `args` 경로가 실제 `dist\cli.js` 인지 확인 |
 | Codex 에서 서버가 시작되지 않음 | TOML 문법 | `examples/codex-config.toml` 과 비교. 경로의 `\` 는 `\\` 로 |
 

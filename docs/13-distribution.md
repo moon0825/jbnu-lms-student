@@ -1,6 +1,6 @@
 # 멀티플랫폼 배포 준비
 
-버전 0.7.0 · 2026-09-04
+버전 0.7.1 · 2026-09-07
 
 ## 배포 원칙
 
@@ -10,7 +10,8 @@ MCP 코어는 하나로 유지하고 플랫폼별 포장만 분리한다.
 |---|---|---|
 | Claude Desktop | `jbnu-lms-student-<version>.mcpb` | Extensions에서 파일 선택 |
 | Codex | `.codex-plugin`과 `.mcp.json`을 포함한 플러그인 | 개인/공개 플러그인 설치 |
-| 기타 MCP 클라이언트 | `jbnu-lms-mcp-<version>.tgz` 또는 향후 npm 공개 패키지 | STDIO 서버 등록 |
+| Windows 일반 사용자 | 공개 npm 패키지 | `npx ... setup` 한 줄로 등록·로그인 |
+| 기타 MCP 클라이언트 | `jbnu-lms-mcp-<version>.tgz` 또는 npm 공개 패키지 | STDIO 서버 등록 |
 | 개발·감사 | GitHub 저장소와 Release | 소스·해시·변경 기록 확인 |
 
 세션, 브라우저 프로필, 다운로드, 실제 LMS HTML은 어떤 배포물에도 포함하지 않는다. 런타임 데이터는 설치 후 각 사용자 PC의 `%LOCALAPPDATA%\jbnu-lms-mcp`에 생성된다.

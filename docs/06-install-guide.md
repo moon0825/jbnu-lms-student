@@ -1,25 +1,39 @@
 # 설치 및 실행 안내서 (Windows)
 
-## 0. 준비물
+## 0. 일반 사용자에게 권장하는 설치
+
+Node.js 22 이상을 설치한 뒤 PowerShell에 원하는 명령 한 줄을 붙여넣는다. 별도 폴더, ZIP 압축 해제, 소스 다운로드가 필요 없다.
+
+```powershell
+# Codex
+npx -y jbnu-lms-mcp@latest setup --client codex
+
+# Claude Desktop
+npx -y jbnu-lms-mcp@latest setup --client claude
+```
+
+명령은 환경 점검 → 기존 설정 백업 → MCP 등록 → 전북대 로그인 창 실행을 순서대로 처리한다. 로그인과 패스키·2차 인증은 사용자가 브라우저에서 직접 완료한다. 완료 뒤 대상 앱을 완전히 종료했다가 다시 실행한다.
+
+로그인을 나중에 할 때는 `--skip-login`을 붙이고, 이후 `npx -y jbnu-lms-mcp@latest login`을 실행한다. Claude Desktop에서는 GitHub Release의 `.mcpb` 파일도 선택할 수 있다.
+
+## 1. 준비물
 
 | 항목 | 확인 방법 | 비고 |
 |---|---|---|
 | Windows 10/11 | — | DPAPI 로 세션을 암호화한다 |
-| Node.js 22 이상 | `node --version` | `node:sqlite`를 포함한 LTS 필요 |
+| Node.js 22 이상 | `node --version` | `npx` 실행에 필요 |
 | Google Chrome 또는 Microsoft Edge | 시작 메뉴 | 로그인 창과 세션 검증에 사용. Edge 는 Windows 11 기본 포함 |
 | Claude Desktop 또는 Codex | — | MCP 클라이언트 |
 | 전북대 통합인증 계정(패스키 또는 2차 인증) | — | 로그인은 본인이 직접 |
 
-## 1. 폴더 준비
+## 2. 개발자용 소스 설치
 
-이 저장소를 짧은 로컬 경로에 둔다. 예: `C:\Users\<이름>\Documents\jbnu-lms-mcp`.
-OneDrive 동기화 폴더나 아주 긴 경로에서는 npm 설치가 실패할 수 있다.
-
-## 2. 설치 스크립트
+아래 과정은 소스 코드를 수정하거나 검증할 개발자만 사용한다. 일반 사용자는 위 간편 설치를 사용한다.
 
 ```powershell
-cd "$HOME\Documents\jbnu-lms-mcp"
-.\scripts\install.ps1 -RegisterClaude
+git clone https://github.com/moon0825/jbnu-lms-student.git
+cd jbnu-lms-student
+.\scripts\install.ps1 -RegisterClaude -RegisterCodex
 ```
 
 옵션:
@@ -36,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -RegisterClaude
 
 스크립트는 설정 파일을 고치기 전에 `claude_desktop_config.json.bak-<시각>` 백업을 남긴다.
 
-## 3. 수동 설치 (스크립트를 쓰지 않을 때)
+## 3. 완전 수동 설치
 
 ```powershell
 npm ci

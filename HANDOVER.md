@@ -2,8 +2,8 @@
 
 - 대상: `jbnu-lms-mcp` — 전북대학교 LMS(JBNU LXP, Moodle 4.5 + Coursemos/ubion) 학생용 **읽기 전용** MCP 서버
 - 실행 환경: Windows 11 · Node 22 · TypeScript · Claude Desktop / Codex STDIO
-- 현재 버전: **v0.7.0** · 최신 커밋: `8afe513`
-- 상태: 빌드·타입체크 OK, **테스트 96개 통과**, 비밀값 스캔 통과, **실제 LMS 연결·조회 검증 완료**
+- 현재 버전: **v0.7.1** · 최신 커밋은 현재 `main` 브랜치 참조
+- 상태: 빌드·타입체크 OK, **테스트 99개 통과**, 비밀값 스캔 통과, **실제 LMS 연결·조회 검증 완료**
 - 작성 시점: 2026-09-04
 
 이 문서는 다음 작업자(Codex)가 맥락 없이 바로 이어받을 수 있도록 작성했다. 먼저 이 문서 → `docs/` → 아래 "바로 시작" 순으로 보면 된다.
@@ -101,7 +101,7 @@ tools/register.ts      MCP 도구 25개 등록 (조회 전용 + 피드백)
 4. **과제 피드백/평가표 노출** — `parseAssignView`에 `.feedback`/rubric/확정점수 셀렉터 추가 + `types.ts` 필드. 같은 화면 안에 데이터 있음(추가 요청 불필요). 성적 성격이므로 표시 최소화.
 5. **`get_course_grades`**(opt-in) — `/grade/report/user/index.php` 해석. `JBNU_LMS_ENABLE_GRADES=1` 게이트 + 응답 최소화. `parsers/grade-report.ts` 신규.
 6. **파서 폴백 신뢰도 표면화** — `observeParser`가 `confidence==='fallback'`일 때 사용자 Note로 "폴백 해석—원문 재확인" 경고 전파(현재 로그만). `Note`·`notesBlock` 재사용.
-7. **MCP 표준 확장** — `outputSchema`(zod) 선언, `prompts`(daily_briefing 등), `resources`(도움말/원문), `resource_link`(download 결과·원문). 24개 상시 노출 도구 선택 부담 완화.
+7. **MCP 표준 확장** — `outputSchema`(zod) 선언, `prompts`(daily_briefing 등), `resources`(도움말/원문), `resource_link`(download 결과·원문). 25개 상시 노출 도구 선택 부담 완화.
 8. **`get_course_focus`** — 특정 강좌 종합 뷰(자료·공지·마감·미이수·성적). 기존 course_id 서비스 조합.
 9. **`get_attendance`** — 온라인 출석/차시 이수(성적 직결). `/mod/ubattendance` 실화면 구조를 `JBNU_LIVE`로 먼저 확인해야 함. **조회 전용 절대 준수(출석 체크 금지).**
 10. **예약 다이제스트 파이프라인** — `get_change_digest`(net-new만, 변화 없으면 quiet) + 별도 커서(대화용 snapshot 불간섭). `brief`가 그 진입점.

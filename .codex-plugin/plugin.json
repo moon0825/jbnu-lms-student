@@ -1,6 +1,6 @@
 {
   "name": "jbnu-lms-student",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "전북대 학생의 공지·과제·마감·수업자료를 안전하게 정리하는 비공식 LMS 학업 도우미입니다.",
   "author": {
     "name": "JBNU LMS MCP Contributors"

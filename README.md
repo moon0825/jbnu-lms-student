@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <code>읽기 전용 LMS</code> · <code>패스키 지원</code> · <code>Windows DPAPI</code> · <code>24개 도구</code> · <code>사용자 승인 피드백</code>
+  <code>읽기 전용 LMS</code> · <code>패스키 지원</code> · <code>Windows DPAPI</code> · <code>25개 도구</code> · <code>사용자 승인 피드백</code>
 </p>
 
 > **비공식 학생 도구:** 전북대학교가 운영하거나 보증하는 공식 서비스가 아닙니다. 학교 명칭과 UI 자산의 권리는 전북대학교에 있으며, 공개 배포 전에는 [공식 UI 사용 지침](https://www.jbnu.ac.kr/web/intro/university/sub05.do)을 확인해야 합니다.
@@ -34,27 +34,27 @@
 - LMS 세션은 Windows DPAPI 로 암호화해 내 PC 에만 보관합니다.
 - LMS 데이터와 인증정보는 `lms.jbnu.ac.kr` 이외로 전송하지 않습니다. 문제 신고·기능 제안은 사용자가 전송 내용을 확인하고 승인한 경우에만 로컬 보관함 또는 설정된 HTTPS 수집기로 접수합니다.
 
-## 1. 설치 (Windows, 3분)
+## 1. 가장 쉬운 설치 (Windows)
 
-필요한 것: **Node.js 22 이상**(LTS 권장), **Google Chrome 또는 Microsoft Edge**, Claude Desktop 또는 Codex.
+준비물은 [Node.js 22 이상](https://nodejs.org/)과 Chrome 또는 Edge입니다. 폴더를 만들거나 소스 코드를 내려받을 필요가 없습니다.
 
-PowerShell 을 열고:
+### Codex
+
+PowerShell에 아래 한 줄을 붙여넣습니다.
 
 ```powershell
-cd "$HOME\Documents\jbnu-lms-mcp"
-.\scripts\install.ps1 -RegisterClaude
+npx -y jbnu-lms-mcp@latest setup --client codex
 ```
 
-이 명령이 하는 일: 의존성 설치 → 빌드 → 테스트 → 환경 점검(`doctor`) → Claude Desktop 설정 파일에 `jbnu-lms` 서버 등록(기존 파일은 백업).
+### Claude Desktop
 
-- Codex 도 함께 등록: `.\scripts\install.ps1 -RegisterClaude -RegisterCodex`
-- 테스트 생략: `-SkipTests`
-- 설치 직후 바로 로그인: `-Login`
-- 실행 정책 오류가 나면: `powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -RegisterClaude`
+```powershell
+npx -y jbnu-lms-mcp@latest setup --client claude
+```
 
-설치가 끝나면 **Claude Desktop 을 완전히 종료 후 다시 실행**하세요(트레이 아이콘까지 종료).
+명령이 환경을 점검하고 기존 설정을 백업한 뒤 MCP를 등록하고 로그인 창을 엽니다. 전북대 아이디·비밀번호·패스키·2차 인증은 브라우저에서 직접 완료합니다. 실제 LMS 홈이 보이면 잠시 기다리세요. 완료 메시지가 나오면 Codex 또는 Claude Desktop을 완전히 종료했다가 다시 실행하면 됩니다.
 
-수동 설정이 필요하면 [examples/claude_desktop_config.json](examples/claude_desktop_config.json) 또는 [examples/codex-config.toml](examples/codex-config.toml) 을 참고해 경로만 바꿔 넣으면 됩니다.
+Claude Desktop에서는 GitHub Release의 `.mcpb` 설치 파일도 사용할 수 있습니다. 개발자용 소스 설치와 수동 설정은 [설치 안내서](docs/06-install-guide.md)에 분리했습니다.
 
 ## 2. 첫 사용
 
@@ -70,10 +70,10 @@ HTTP로 검증하고, 원래 질문을 이어서 처리합니다. 두 번째 `�
 다른 경로입니다. 인증이 끝나면 LMS 세션은 DPAPI로 저장하고, 전용 브라우저에는 LMS 쿠키만 남겨 원문 보기에 재사용합니다.
 비밀번호·자동완성·방문 기록·SSO 쿠키·사이트 저장소·캐시는 자동 정리합니다. 패스키 인증에 필요한 팝업은 이 전용 창에서만 허용됩니다.
 
-명령행에서 미리 로그인해 둘 수도 있습니다.
+로그인만 다시 할 수도 있습니다.
 
 ```powershell
-node dist\cli.js login
+npx -y jbnu-lms-mcp@latest login
 ```
 
 ## 3. 이런 질문에 답합니다
@@ -96,7 +96,7 @@ node dist\cli.js login
 | 전송 못 한 신고를 다시 보내줘 | `retry_feedback_delivery` |
 | 내 로컬 신고 기록을 지워줘 | `discard_local_feedback` |
 
-전체 도구 24개의 입력·출력은 [docs/05-tool-spec.md](docs/05-tool-spec.md) 에 있습니다.
+전체 도구 25개의 입력·출력은 [docs/05-tool-spec.md](docs/05-tool-spec.md) 에 있습니다.
 
 응답에는 항상 **기준 시각(Asia/Seoul)**, **로그인 상태**, **마지막 동기화 시각**, **데이터 출처**(Moodle API / 웹 AJAX / LMS 화면 해석 / AI 추정)와 **원문 URL** 이 붙습니다. 실패하면 영향 범위·자동 복구·바로 실행할 다음 행동·비식별 진단 ID를 함께 안내하며, 일부 강좌만 실패한 결과는 완전한 빈 결과와 구분합니다.
 과제는 마감·남은 시간·제출 상태·지각 허용 여부를, 공지는 📌 고정(중요)·🆕 새 글·📎 첨부 여부를 표시합니다. 자료를 다시 내려받으면 SHA-256으로 같은 파일인지 확인해 중복 복사본을 만들지 않습니다.
@@ -124,12 +124,12 @@ node dist\cli.js login
 ## 5. 명령행 도구
 
 ```powershell
-node dist\cli.js login              # 브라우저 로그인 (--plain, --wait 300)
-node dist\cli.js status --verify    # 연결 상태
-node dist\cli.js logout             # 세션 삭제 (--delete-profile 로 브라우저 프로필까지)
-node dist\cli.js doctor             # 환경 점검
-node dist\cli.js config --client claude --write   # Claude Desktop 등록
-node dist\cli.js config --client codex --write    # Codex 등록
+npx -y jbnu-lms-mcp@latest setup --client codex   # Codex 등록 + 로그인
+npx -y jbnu-lms-mcp@latest setup --client claude  # Claude 등록 + 로그인
+npx -y jbnu-lms-mcp@latest login                  # 브라우저 로그인
+npx -y jbnu-lms-mcp@latest status --verify        # 연결 상태
+npx -y jbnu-lms-mcp@latest logout                 # 세션 삭제
+npx -y jbnu-lms-mcp@latest doctor                 # 환경 점검
 ```
 
 ## 6. 환경 변수
